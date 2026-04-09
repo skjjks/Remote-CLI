@@ -45,7 +45,7 @@ export async function handleCardAction(
     const pendingPrompt = pendingPrompts.get(conversationId);
     if (pendingPrompt && pendingPrompt.options.length > 4) {
       const remainingOptions = pendingPrompt.options.slice(4);
-      const lines = remainingOptions.map((opt: any, i: number) => `${i + 4}. ${opt.label}`);
+      const lines = remainingOptions.map((opt, i) => `${i + 4}. ${opt.label}`);
       await feishuBot.sendText(conversationId, `More options:\n${lines.join('\n')}\nType the number to select.`);
     }
     return;

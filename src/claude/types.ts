@@ -98,11 +98,11 @@ export type ClaudeEvent = ClaudeInitEvent | ClaudeHookEvent | ClaudeAssistantEve
 
 /** Narrowing helpers */
 export function isInitEvent(event: ClaudeBaseEvent): event is ClaudeInitEvent {
-  return event.type === 'system' && (event as any).subtype === 'init';
+  return event.type === 'system' && 'subtype' in event && event.subtype === 'init';
 }
 
 export function isHookEvent(event: ClaudeBaseEvent): event is ClaudeHookEvent {
-  return event.type === 'system' && ['hook_started', 'hook_response'].includes((event as any).subtype);
+  return event.type === 'system' && 'subtype' in event && ['hook_started', 'hook_response'].includes(event.subtype as string);
 }
 
 export function isAssistantEvent(event: ClaudeBaseEvent): event is ClaudeAssistantEvent {

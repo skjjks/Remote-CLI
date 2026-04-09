@@ -67,14 +67,17 @@ export class FeishuBot {
   /**
    * Parse incoming message from webhook event
    */
-  parseMessage(event: any): FeishuMessage | null {
+  parseMessage(event: unknown): FeishuMessage | null {
     try {
-      const { message, sender } = event;
+      const data = event as Record<string, unknown>;
+      const message = data.message as Record<string, unknown> | undefined;
+      const sender = data.sender as Record<string, unknown> | undefined;
       if (!message || !sender) {
         return null;
       }
 
-      const senderId = sender.sender_id?.user_id || sender.sender_id?.open_id;
+      const senderIdObj = sender.sender_id as Record<string, unknown> | undefined;
+      const senderId = (senderIdObj?.user_id || senderIdObj?.open_id) as string | undefined;
       if (!senderId) {
         return null;
       }
@@ -83,7 +86,7 @@ export class FeishuBot {
       let messageType: FeishuMessage['messageType'] = 'text';
 
       if (message.content) {
-        const parsed = JSON.parse(message.content);
+        const parsed = JSON.parse(message.content as string);
         if (parsed.text) {
           content = parsed.text;
         } else if (parsed.post) {
@@ -94,8 +97,8 @@ export class FeishuBot {
       }
 
       return {
-        messageId: message.message_id,
-        conversationId: message.chat_id,
+        messageId: message.message_id as string,
+        conversationId: message.chat_id as string,
         senderId,
         content,
         messageType,
@@ -109,14 +112,16 @@ export class FeishuBot {
   /**
    * Parse card action from webhook event
    */
-  parseCardAction(event: any): { action: FeishuCardAction; conversationId: string; senderId: string } | null {
+  parseCardAction(event: unknown): { action: FeishuCardAction; conversationId: string; senderId: string } | null {
     try {
-      const { action, context } = event;
+      const data = event as Record<string, unknown>;
+      const action = data.action as Record<string, unknown> | undefined;
+      const context = data.context as Record<string, unknown> | undefined;
       if (!action || !context) {
         return null;
       }
 
-      const senderId = context.open_id || context.user_id;
+      const senderId = (context.open_id || context.user_id) as string | undefined;
       if (!senderId) {
         return null;
       }
@@ -124,9 +129,9 @@ export class FeishuBot {
       return {
         action: {
           action: 'click',
-          value: action.value,
+          value: action.value as string,
         },
-        conversationId: context.chat_id,
+        conversationId: context.chat_id as string,
         senderId,
       };
     } catch (error) {
@@ -150,14 +155,16 @@ export class FeishuBot {
           content: JSON.stringify({ text }),
         },
       });
-      const res = response as any;
+      const res = response as Record<string, unknown>;
+      const resData = res?.data as Record<string, unknown> | undefined;
       if (res?.code && res.code !== 0) {
         console.error('[API] sendText error:', res.code, res.msg);
       } else {
-        console.log('[API] sendText OK, msg_id:', res?.data?.message_id);
+        console.log('[API] sendText OK, msg_id:', resData?.message_id);
       }
-    } catch (error: any) {
-      console.error('[API] sendText FAILED:', error?.code, error?.msg || error?.message || error);
+    } catch (error: unknown) {
+      const err = error as Record<string, unknown>;
+      console.error('[API] sendText FAILED:', err?.code, err?.msg || (error instanceof Error ? error.message : String(error)));
       throw error;
     }
   }
@@ -178,15 +185,17 @@ export class FeishuBot {
           content: JSON.stringify(card),
         },
       });
-      const res = response as any;
+      const res = response as Record<string, unknown>;
+      const resData = res?.data as Record<string, unknown> | undefined;
       if (res?.code && res.code !== 0) {
         console.error('[API] sendCard error:', res.code, res.msg);
         return undefined;
       }
-      console.log('[API] sendCard OK, msg_id:', res?.data?.message_id);
-      return res?.data?.message_id;
-    } catch (error: any) {
-      console.error('[API] sendCard FAILED:', error?.code, error?.msg || error?.message || error);
+      console.log('[API] sendCard OK, msg_id:', resData?.message_id);
+      return resData?.message_id as string | undefined;
+    } catch (error: unknown) {
+      const err = error as Record<string, unknown>;
+      console.error('[API] sendCard FAILED:', err?.code, err?.msg || (error instanceof Error ? error.message : String(error)));
       throw error;
     }
   }
@@ -220,15 +229,17 @@ export class FeishuBot {
         path: { message_id: messageId },
         data: { reaction_type: { emoji_type: emojiType } },
       });
-      const res = response as any;
+      const res = response as Record<string, unknown>;
+      const resData = res?.data as Record<string, unknown> | undefined;
       if (res?.code && res.code !== 0) {
         console.error('[API] addReaction error:', res.code, res.msg);
         return undefined;
       }
-      console.log('[API] addReaction OK:', res?.data?.reaction_id);
-      return res?.data?.reaction_id;
-    } catch (err: any) {
-      console.error('[API] addReaction FAILED:', err?.code, err?.msg || err?.message || err);
+      console.log('[API] addReaction OK:', resData?.reaction_id);
+      return resData?.reaction_id as string | undefined;
+    } catch (error: unknown) {
+      const err = error as Record<string, unknown>;
+      console.error('[API] addReaction FAILED:', err?.code, err?.msg || (error instanceof Error ? error.message : String(error)));
       return undefined;
     }
   }
@@ -266,17 +277,20 @@ export class FeishuBot {
   /**
    * Extract plain text from post message format
    */
-  private extractTextFromPost(post: any): string {
-    if (!post || !post.content) {
+  private extractTextFromPost(post: unknown): string {
+    const data = post as Record<string, unknown> | undefined;
+    if (!data || !data.content) {
       return '';
     }
 
     const textParts: string[] = [];
-    for (const paragraph of post.content) {
+    const content = data.content as unknown[];
+    for (const paragraph of content) {
       if (Array.isArray(paragraph)) {
         for (const element of paragraph) {
-          if (element.text) {
-            textParts.push(element.text);
+          const el = element as Record<string, unknown>;
+          if (el.text) {
+            textParts.push(el.text as string);
           }
         }
       }

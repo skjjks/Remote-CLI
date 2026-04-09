@@ -201,7 +201,7 @@ async function main(): Promise<void> {
 
   // Register message event handler
   eventDispatcher.register({
-    'im.message.receive_v1': async (data: any) => {
+    'im.message.receive_v1': async (data: unknown) => {
       const message = feishuBot.parseMessage(data);
       if (message) {
         console.log(`[MSG] ${message.content.slice(0, 50)}`);

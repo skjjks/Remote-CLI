@@ -8,11 +8,18 @@ import { SmartCardBuilder } from './bot/card';
 export const activeSessions: Map<string, number> = new Map();
 
 /**
+ * A pending interactive prompt shown to the user in Terminal mode.
+ */
+export interface PendingPrompt {
+  options: Array<{ label: string; value?: string }>;
+}
+
+/**
  * Pending prompts for terminal mode interactive responses.
  * Bounded by active conversations — each conversation has at most one pending prompt.
  * Entries are consumed on response or removed when the session is killed.
  */
-export const pendingPrompts: Map<string, any> = new Map();
+export const pendingPrompts: Map<string, PendingPrompt> = new Map();
 
 export const COMMAND_PREFIX = '!';
 
