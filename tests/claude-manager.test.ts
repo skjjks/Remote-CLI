@@ -1,24 +1,14 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ClaudeManager, ClaudeManagerCallbacks } from '../src/claude/manager';
 
-// Mock child_process
-vi.mock('child_process', () => {
-  const EventEmitter = require('events');
-
-  function createMockProcess() {
-    const proc = new EventEmitter();
-    proc.stdout = new EventEmitter();
-    proc.stderr = new EventEmitter();
-    proc.stdin = { write: vi.fn(), end: vi.fn() };
-    proc.kill = vi.fn();
-    proc.pid = 12345;
-    return proc;
-  }
-
-  return {
-    spawn: vi.fn(() => createMockProcess()),
-  };
-});
+// Mock the tmux module
+vi.mock('../src/terminal/tmux', () => ({
+  createSession: vi.fn().mockResolvedValue(undefined),
+  sendKeys: vi.fn().mockResolvedValue(undefined),
+  capturePane: vi.fn().mockResolvedValue(''),
+  sessionExists: vi.fn().mockResolvedValue(true),
+  killSession: vi.fn().mockResolvedValue(undefined),
+}));
 
 // Mock config
 vi.mock('../src/config', () => ({
@@ -32,136 +22,185 @@ vi.mock('../src/config', () => ({
   }),
 }));
 
-import { spawn } from 'child_process';
+import * as tmux from '../src/terminal/tmux';
+
+/**
+ * Helper: start a session while advancing fake timers to resolve the
+ * internal 3-second startup delay inside ClaudeManager.startSession().
+ */
+async function startSessionWithTimers(
+  manager: ClaudeManager,
+  convId: string,
+  tmuxName: string,
+  cwd?: string,
+): Promise<void> {
+  const promise = manager.startSession(convId, tmuxName, cwd);
+  // Advance past the 3000ms startup sleep
+  await vi.advanceTimersByTimeAsync(3100);
+  return promise;
+}
 
 describe('ClaudeManager', () => {
   let manager: ClaudeManager;
   let callbacks: ClaudeManagerCallbacks;
-  let mockSpawn: ReturnType<typeof vi.fn>;
 
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.useFakeTimers();
     callbacks = {
-      onInit: vi.fn(),
-      onText: vi.fn(),
-      onToolUse: vi.fn(),
-      onResult: vi.fn(),
+      onStreamStart: vi.fn().mockResolvedValue('msg-001'),
+      onStreamUpdate: vi.fn(),
+      onStreamEnd: vi.fn(),
+      onMenu: vi.fn(),
       onError: vi.fn(),
     };
     manager = new ClaudeManager(callbacks);
-    mockSpawn = spawn as any;
   });
 
-  it('startSession spawns a claude process', () => {
-    manager.startSession('conv1', 'say hello');
-    expect(mockSpawn).toHaveBeenCalledTimes(1);
-    const args = mockSpawn.mock.calls[0];
-    expect(args[0]).toBe('claude');
-    expect(args[1]).toContain('-p');
-    expect(args[1]).toContain('--output-format');
-    expect(args[1]).toContain('stream-json');
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
-  it('startSession with resumeId includes --resume flag', () => {
-    manager.startSession('conv1', 'follow up', { resumeId: 'abc-123' });
-    const args = mockSpawn.mock.calls[0];
-    expect(args[1]).toContain('--resume');
-    expect(args[1]).toContain('abc-123');
+  it('startSession creates a tmux session and sends claude command', async () => {
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
+
+    expect(tmux.createSession).toHaveBeenCalledWith(
+      'claude-conv1',
+      'claude',
+      80,
+      24,
+    );
+    // capturePane is called to get initial content
+    expect(tmux.capturePane).toHaveBeenCalledWith('claude-conv1');
   });
 
-  it('processes init event from stdout', () => {
-    manager.startSession('conv1', 'hello');
-    const proc = mockSpawn.mock.results[0].value;
+  it('startSession with cwd creates bash session and sends cd + claude command', async () => {
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1', '/home/user/project');
 
-    const initEvent = '{"type":"system","subtype":"init","cwd":"/tmp","session_id":"sess-abc","tools":["Bash"],"model":"opus","permissionMode":"default"}\n';
-    proc.stdout.emit('data', initEvent);
-
-    expect(callbacks.onInit).toHaveBeenCalledWith('conv1', expect.objectContaining({
-      type: 'system',
-      subtype: 'init',
-      session_id: 'sess-abc',
-    }));
+    // When cwd is provided, it creates a bash session
+    expect(tmux.createSession).toHaveBeenCalledWith(
+      'claude-conv1',
+      '/bin/bash',
+      80,
+      24,
+    );
+    // Then sends cd + claude command via sendKeys
+    expect(tmux.sendKeys).toHaveBeenCalledWith(
+      'claude-conv1',
+      'cd /home/user/project && claude',
+    );
+    expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'Enter');
   });
 
-  it('processes assistant text event from stdout', () => {
-    manager.startSession('conv1', 'hello');
-    const proc = mockSpawn.mock.results[0].value;
+  it('sendMessage sends text via tmux sendKeys', async () => {
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
+    vi.clearAllMocks();
 
-    const assistantEvent = JSON.stringify({
-      type: 'assistant',
-      message: {
-        id: 'msg1',
-        model: 'opus',
-        role: 'assistant',
-        content: [{ type: 'text', text: 'Hello world' }],
-        stop_reason: 'end_turn',
-        usage: { input_tokens: 10, output_tokens: 5 },
-      },
-      session_id: 'sess-abc',
-    }) + '\n';
-    proc.stdout.emit('data', assistantEvent);
+    await manager.sendMessage('conv1', 'say hello');
 
-    expect(callbacks.onText).toHaveBeenCalledWith('conv1', 'Hello world');
+    expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'say hello');
+    expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'Enter');
   });
 
-  it('processes tool_use event from stdout', () => {
-    manager.startSession('conv1', 'list files');
-    const proc = mockSpawn.mock.results[0].value;
+  it('sendMessage calls onError when no session exists', async () => {
+    await manager.sendMessage('nonexistent', 'hello');
 
-    const assistantEvent = JSON.stringify({
-      type: 'assistant',
-      message: {
-        id: 'msg1',
-        model: 'opus',
-        role: 'assistant',
-        content: [{ type: 'tool_use', id: 'tool1', name: 'Bash', input: { command: 'ls' } }],
-        stop_reason: null,
-        usage: { input_tokens: 10, output_tokens: 5 },
-      },
-      session_id: 'sess-abc',
-    }) + '\n';
-    proc.stdout.emit('data', assistantEvent);
-
-    expect(callbacks.onToolUse).toHaveBeenCalledWith('conv1', 'Bash', { command: 'ls' });
+    expect(callbacks.onError).toHaveBeenCalledWith(
+      'nonexistent',
+      'No active Claude session',
+    );
   });
 
-  it('processes result event from stdout', () => {
-    manager.startSession('conv1', 'hello');
-    const proc = mockSpawn.mock.results[0].value;
+  it('interruptSession sends C-c via tmux', async () => {
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
 
-    const resultEvent = JSON.stringify({
-      type: 'result',
-      subtype: 'success',
-      is_error: false,
-      duration_ms: 5000,
-      duration_api_ms: 4000,
-      num_turns: 1,
-      result: 'Hello!',
-      session_id: 'sess-abc',
-      total_cost_usd: 0.05,
-      usage: { input_tokens: 100, output_tokens: 10 },
-      permission_denials: [],
-    }) + '\n';
-    proc.stdout.emit('data', resultEvent);
-
-    expect(callbacks.onResult).toHaveBeenCalledWith('conv1', expect.objectContaining({
-      type: 'result',
-      duration_ms: 5000,
-      total_cost_usd: 0.05,
-    }));
+    await manager.interruptSession('conv1');
+    expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'C-c');
   });
 
-  it('interruptSession kills the child process', () => {
-    manager.startSession('conv1', 'long task');
-    const proc = mockSpawn.mock.results[0].value;
-
-    manager.interruptSession('conv1');
-    expect(proc.kill).toHaveBeenCalledWith('SIGINT');
-  });
-
-  it('isSessionActive returns correct state', () => {
+  it('isSessionActive returns correct state', async () => {
     expect(manager.isSessionActive('conv1')).toBe(false);
-    manager.startSession('conv1', 'hello');
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
     expect(manager.isSessionActive('conv1')).toBe(true);
+  });
+
+  it('isSessionAlive checks tmux session existence', async () => {
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
+
+    (tmux.sessionExists as ReturnType<typeof vi.fn>).mockResolvedValue(true);
+    expect(await manager.isSessionAlive('conv1')).toBe(true);
+
+    (tmux.sessionExists as ReturnType<typeof vi.fn>).mockResolvedValue(false);
+    expect(await manager.isSessionAlive('conv1')).toBe(false);
+  });
+
+  it('isSessionAlive returns false when session not registered', async () => {
+    expect(await manager.isSessionAlive('nonexistent')).toBe(false);
+  });
+
+  it('killSession kills the tmux session and removes from map', async () => {
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
+    expect(manager.isSessionActive('conv1')).toBe(true);
+
+    await manager.killSession('conv1');
+    expect(tmux.killSession).toHaveBeenCalledWith('claude-conv1');
+    expect(manager.isSessionActive('conv1')).toBe(false);
+  });
+
+  it('pollForResponse streams output and calls onStreamEnd when stable', async () => {
+    const captureMock = tmux.capturePane as ReturnType<typeof vi.fn>;
+    captureMock.mockResolvedValue('');
+
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
+    vi.clearAllMocks();
+
+    const beforeScreen = 'Claude > ';
+    const afterScreen = 'Claude > \nHello! How can I help you today?';
+
+    // sendMessage first captures "before" content
+    captureMock.mockResolvedValueOnce(beforeScreen);
+
+    await manager.sendMessage('conv1', 'hello');
+
+    // Polling starts after 1500ms initial delay
+    // Poll 1: new content appears
+    captureMock.mockResolvedValueOnce(afterScreen);
+    await vi.advanceTimersByTimeAsync(1500);
+
+    // Polls 2-4: same content (stableCount goes 1, 2, 3 -> triggers onStreamEnd)
+    captureMock.mockResolvedValue(afterScreen);
+    await vi.advanceTimersByTimeAsync(1000); // poll 2: stableCount=1
+    await vi.advanceTimersByTimeAsync(1000); // poll 3: stableCount=2
+    await vi.advanceTimersByTimeAsync(1000); // poll 4: stableCount=3 -> done
+
+    expect(callbacks.onStreamStart).toHaveBeenCalledWith('conv1');
+    expect(callbacks.onStreamEnd).toHaveBeenCalledWith(
+      'conv1',
+      'msg-001',
+      expect.stringContaining('Hello! How can I help you today?'),
+      expect.any(Object),
+    );
+  });
+
+  it('pollForResponse calls onError on timeout', async () => {
+    const captureMock = tmux.capturePane as ReturnType<typeof vi.fn>;
+    captureMock.mockResolvedValue('');
+
+    await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
+    vi.clearAllMocks();
+
+    // Before content and all subsequent polls return the same content (no change)
+    captureMock.mockResolvedValue('Claude > ');
+
+    await manager.sendMessage('conv1', 'long task');
+
+    // Advance past the 1500ms initial delay + enough time to exceed the 300000ms timeout
+    await vi.advanceTimersByTimeAsync(1500);
+    await vi.advanceTimersByTimeAsync(300000);
+
+    expect(callbacks.onError).toHaveBeenCalledWith(
+      'conv1',
+      'Claude response timed out',
+    );
   });
 });
