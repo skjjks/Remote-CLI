@@ -239,6 +239,25 @@ async function main(): Promise<void> {
   console.log('Feishu Terminal Bot connected via WebSocket');
   console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
+
+  // Graceful shutdown
+  const shutdown = async (signal: string) => {
+    console.log(`\n[SHUTDOWN] Received ${signal}, cleaning up...`);
+    try {
+      await claudeManager.killAll();
+      console.log('[SHUTDOWN] Claude sessions cleaned up');
+    } catch (err) {
+      console.warn('[SHUTDOWN] Error cleaning up Claude sessions:', err instanceof Error ? err.message : err);
+    }
+    console.log('[SHUTDOWN] Done');
+    process.exit(0);
+  };
+
+  process.on('SIGINT', () => shutdown('SIGINT'));
+  process.on('SIGTERM', () => shutdown('SIGTERM'));
+  process.on('unhandledRejection', (reason) => {
+    console.error('[FATAL] Unhandled rejection:', reason);
+  });
 }
 
 main().catch(console.error);
