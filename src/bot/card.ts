@@ -280,6 +280,7 @@ export class SmartCardBuilder {
       '| `!cd <path>` | Switch Claude working directory |',
       '| `!mode auto\\|default` | Permission mode |',
       '| `!key <key>` | Send key (up/down/enter/escape/ctrl+c) |',
+      '| `!history` | Show shell command history |',
       '| `!whoami` | Show your User ID |',
       '',
       '**Interactive Mode**',

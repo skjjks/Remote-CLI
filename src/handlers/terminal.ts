@@ -2,7 +2,7 @@ import { getFeishuBot } from '../bot/feishu';
 import { getConfig } from '../config';
 import { getSessionManager, SessionInfo } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
-import { activeSessions, pendingPrompts, smartCard } from '../state';
+import { activeSessions, pendingPrompts, smartCard, addToHistory } from '../state';
 
 // ── Helpers ──
 
@@ -77,9 +77,9 @@ export async function handleShellCommand(conversationId: string, command: string
     return;
   }
 
-  const sessionManager = getSessionManager();
+  addToHistory(conversationId, command);
 
-  // Find or create a terminal session
+  const sessionManager = getSessionManager();
   let activeSessionId = activeSessions.get(conversationId);
   let session: SessionInfo | undefined;
 

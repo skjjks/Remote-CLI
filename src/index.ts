@@ -7,7 +7,7 @@ import { isInteractiveProgram, getShortcutKey } from './terminal/interactive';
 import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, extractCommandOutput } from './handlers/terminal';
 import { handleClaudeCommand, handleCd, getClaudeManager } from './handlers/claude';
-import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch } from './handlers/session';
+import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory } from './handlers/session';
 // Note: handleCardAction is in ./handlers/card-action.ts but unused in WebSocket mode
 // (card button callbacks require HTTP webhook mode)
 
@@ -65,6 +65,9 @@ async function handleCommand(
         return;
       case 'mode':
         await handleModeSwitch(conversationId, args[0]);
+        return;
+      case 'history':
+        await handleHistory(conversationId);
         return;
       case 'key':
         await handleSpecialKey(conversationId, args.join(' '));
@@ -241,7 +244,7 @@ async function main(): Promise<void> {
   await wsClient.start({ eventDispatcher });
 
   console.log('Feishu Terminal Bot connected via WebSocket');
-  console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !esc, !enter, !tab, !whoami');
+  console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
 
   // Graceful shutdown

@@ -1,7 +1,7 @@
 import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
-import { activeSessions } from '../state';
+import { activeSessions, commandHistory } from '../state';
 import { getClaudeManager } from './claude';
 
 // ── Session management handlers ──
@@ -144,4 +144,17 @@ export async function handleModeSwitch(conversationId: string, mode?: string): P
   }
 
   await feishuBot.sendText(conversationId, `Permission mode set to: ${mode}`);
+}
+
+export async function handleHistory(conversationId: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+  const history = commandHistory.get(conversationId);
+
+  if (!history || history.length === 0) {
+    await feishuBot.sendText(conversationId, 'No command history');
+    return;
+  }
+
+  const lines = history.map((cmd, i) => `  ${i + 1}. ${cmd}`);
+  await feishuBot.sendText(conversationId, `Command history:\n${lines.join('\n')}`);
 }
