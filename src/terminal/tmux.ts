@@ -141,6 +141,16 @@ export async function sendKeys(name: string, keys: string): Promise<void> {
 }
 
 /**
+ * Send literal text to a tmux session (no key name interpretation).
+ * Use this for user-provided text input.
+ * Use sendKeys() for control keys like Enter, Escape, C-c.
+ */
+export async function sendLiteralKeys(name: string, text: string): Promise<void> {
+  const args = ['send-keys', '-t', name, '-l', text];
+  await executeTmux(args);
+}
+
+/**
  * Get the current foreground command running in a tmux pane
  * @param name - Session name
  * @returns The process name (e.g., 'bash', 'vim', 'htop')

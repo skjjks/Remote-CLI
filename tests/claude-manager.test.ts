@@ -5,6 +5,7 @@ import { ClaudeManager, ClaudeManagerCallbacks } from '../src/claude/manager';
 vi.mock('../src/terminal/tmux', () => ({
   createSession: vi.fn().mockResolvedValue(undefined),
   sendKeys: vi.fn().mockResolvedValue(undefined),
+  sendLiteralKeys: vi.fn().mockResolvedValue(undefined),
   capturePane: vi.fn().mockResolvedValue(''),
   sessionExists: vi.fn().mockResolvedValue(true),
   killSession: vi.fn().mockResolvedValue(undefined),
@@ -100,13 +101,15 @@ describe('ClaudeManager', () => {
     expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'Enter');
   });
 
-  it('sendMessage sends text via tmux sendKeys', async () => {
+  it('sendMessage sends text via tmux sendLiteralKeys and Enter via sendKeys', async () => {
     await startSessionWithTimers(manager, 'conv1', 'claude-conv1');
     vi.clearAllMocks();
 
     await manager.sendMessage('conv1', 'say hello');
 
-    expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'say hello');
+    // User text uses literal mode (no key name interpretation)
+    expect(tmux.sendLiteralKeys).toHaveBeenCalledWith('claude-conv1', 'say hello');
+    // Enter uses regular sendKeys (control key)
     expect(tmux.sendKeys).toHaveBeenCalledWith('claude-conv1', 'Enter');
   });
 

@@ -124,7 +124,8 @@ export class ClaudeManager {
     }
 
     // Send the message via tmux send-keys
-    await tmux.sendKeys(session.tmuxName, message);
+    // Use literal mode for user-provided text to prevent tmux key name interpretation
+    await tmux.sendLiteralKeys(session.tmuxName, message);
     await tmux.sendKeys(session.tmuxName, 'Enter');
 
     // Poll for new output — Claude needs time to respond

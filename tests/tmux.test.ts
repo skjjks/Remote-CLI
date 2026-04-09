@@ -7,6 +7,7 @@ import {
   listSessions,
   sessionExists,
   sendKeys,
+  sendLiteralKeys,
   capturePane,
   getCurrentCommand,
 } from '../src/terminal/tmux';
@@ -232,6 +233,33 @@ describe('tmux', () => {
 
     it('should throw error when send-keys fails', async () => {
       const promise = sendKeys('non-existent', 'test');
+
+      mockProcess.stderr.on.mock.calls.find((call: unknown[]) => call[0] === 'data')?.[1](Buffer.from('no session'));
+      const call = mockProcess.on.mock.calls.find(call => call[0] === 'close');
+      call?.[1](1);
+
+      await expect(promise).rejects.toThrow('no session');
+    });
+  });
+
+  describe('sendLiteralKeys', () => {
+    it('should execute tmux send-keys with -l flag for literal text', async () => {
+      const promise = sendLiteralKeys('my-session', 'some text with Enter and Escape');
+
+      const call = mockProcess.on.mock.calls.find(call => call[0] === 'close');
+      call?.[1](0);
+
+      await promise;
+
+      expect(spawn).toHaveBeenCalledWith(
+        'tmux',
+        ['send-keys', '-t', 'my-session', '-l', 'some text with Enter and Escape'],
+        expect.any(Object)
+      );
+    });
+
+    it('should throw error when send-keys -l fails', async () => {
+      const promise = sendLiteralKeys('non-existent', 'test');
 
       mockProcess.stderr.on.mock.calls.find((call: unknown[]) => call[0] === 'data')?.[1](Buffer.from('no session'));
       const call = mockProcess.on.mock.calls.find(call => call[0] === 'close');

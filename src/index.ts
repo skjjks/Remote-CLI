@@ -136,7 +136,8 @@ async function handleCommand(
         }
       }
 
-      await tmux.sendKeys(tmuxName, cmd);
+      // Use literal mode for user-provided text to prevent tmux key name interpretation
+      await tmux.sendLiteralKeys(tmuxName, cmd);
       if (!useRawMode) {
         await tmux.sendKeys(tmuxName, 'Enter');
       }

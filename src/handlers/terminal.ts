@@ -93,7 +93,8 @@ export async function handleShellCommand(conversationId: string, command: string
   }
 
   // Send command via tmux send-keys (not PTY stream)
-  await tmux.sendKeys(session.tmuxName!, command);
+  // Use literal mode for user-provided text to prevent tmux key name interpretation
+  await tmux.sendLiteralKeys(session.tmuxName!, command);
   await tmux.sendKeys(session.tmuxName!, 'Enter');
 
   // Wait for command to execute, then capture rendered screen
