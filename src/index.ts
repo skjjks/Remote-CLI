@@ -820,7 +820,7 @@ async function main(): Promise<void> {
   await wsClient.start({ eventDispatcher });
 
   console.log('Feishu Terminal Bot connected via WebSocket');
-  console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !whoami');
+  console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
 }
 
