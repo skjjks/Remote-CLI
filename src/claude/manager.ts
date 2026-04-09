@@ -1,41 +1,48 @@
-import { spawn, ChildProcess } from 'child_process';
 import { getConfig } from '../config';
-import { ClaudeStreamParser } from './parser';
-import {
-  ClaudeBaseEvent,
-  ClaudeInitEvent,
-  ClaudeAssistantEvent,
-  ClaudeResultEvent,
-  isInitEvent,
-  isHookEvent,
-  isAssistantEvent,
-  isResultEvent,
-} from './types';
+import * as tmux from '../terminal/tmux';
+
+/**
+ * Claude Manager — runs Claude Code in a tmux session (interactive mode).
+ * Uses tmux send-keys to send messages, capture-pane to read output.
+ * This enables true multi-turn conversations.
+ */
+
+export interface MenuOption {
+  label: string;
+  index: number;
+  selected: boolean;
+}
+
+export interface DetectedMenu {
+  title: string;
+  options: MenuOption[];
+  hint: string;  // e.g. "Enter to confirm · Esc to exit"
+}
+
+export interface ClaudeMetadata {
+  model?: string;
+  cwd?: string;
+  context?: string;
+  status?: string;  // e.g. "thinking", "Bash", "Edit", "Read", "done"
+  costUsd?: number;
+}
 
 export interface ClaudeManagerCallbacks {
-  onInit: (conversationId: string, event: ClaudeInitEvent) => void;
-  onText: (conversationId: string, text: string) => void;
-  onToolUse: (conversationId: string, toolName: string, input: Record<string, unknown>) => void;
-  onResult: (conversationId: string, event: ClaudeResultEvent) => void;
+  onStreamStart: (conversationId: string) => Promise<string | undefined>;  // returns messageId
+  onStreamUpdate: (conversationId: string, messageId: string, content: string, metadata?: ClaudeMetadata) => void;
+  onStreamEnd: (conversationId: string, messageId: string, content: string, metadata: ClaudeMetadata) => void;
+  onMenu: (conversationId: string, menu: DetectedMenu) => void;
   onError: (conversationId: string, error: string) => void;
 }
 
-interface ActiveProcess {
-  process: ChildProcess;
-  parser: ClaudeStreamParser;
+interface ClaudeSession {
+  tmuxName: string;
   conversationId: string;
-  stderr: string;
-  timeoutId?: NodeJS.Timeout;
-}
-
-export interface StartSessionOptions {
-  resumeId?: string;
-  permissionMode?: 'default' | 'auto';
-  allowedTools?: string[];
+  lastCaptureContent: string;  // Track content to send only new output
 }
 
 export class ClaudeManager {
-  private processes: Map<string, ActiveProcess> = new Map();
+  private sessions: Map<string, ClaudeSession> = new Map();
   private callbacks: ClaudeManagerCallbacks;
   private config: ReturnType<typeof getConfig>;
 
@@ -45,159 +52,589 @@ export class ClaudeManager {
   }
 
   /**
-   * Start a Claude session for a conversation.
-   * Spawns `claude -p --output-format stream-json --verbose` with the given prompt.
+   * Start a new Claude tmux session.
+   * Launches `claude` (interactive mode) in a detached tmux session.
    */
-  startSession(conversationId: string, prompt: string, options?: StartSessionOptions): void {
-    // Kill any existing process for this conversation
-    this.interruptSession(conversationId);
+  async startSession(conversationId: string, tmuxName: string, cwd?: string): Promise<void> {
+    const config = this.config;
+    const mode = config.claude.defaultMode;
 
-    const args = this.buildArgs(prompt, options);
+    let shellCmd = 'claude';
+    if (mode === 'auto') {
+      shellCmd = 'claude --dangerously-skip-permissions';
+    }
 
-    const proc = spawn('claude', args, {
-      env: { ...process.env },
-      stdio: ['pipe', 'pipe', 'pipe'],
-    });
+    // If cwd specified, cd there first then launch claude
+    if (cwd) {
+      await tmux.createSession(
+        tmuxName,
+        '/bin/bash',
+        config.terminal.cols,
+        config.terminal.rows
+      );
+      await tmux.sendKeys(tmuxName, `cd ${cwd} && ${shellCmd}`);
+      await tmux.sendKeys(tmuxName, 'Enter');
+    } else {
+      await tmux.createSession(
+        tmuxName,
+        shellCmd,
+        config.terminal.cols,
+        config.terminal.rows
+      );
+    }
 
-    const parser = new ClaudeStreamParser();
-    const active: ActiveProcess = {
-      process: proc,
-      parser,
+    // Wait for claude to start
+    await new Promise(resolve => setTimeout(resolve, 3000));
+
+    const session: ClaudeSession = {
+      tmuxName,
       conversationId,
-      stderr: '',
+      lastCaptureContent: '',
     };
 
-    // Set timeout
+    // Capture initial screen content so we can diff later
+    try {
+      session.lastCaptureContent = await tmux.capturePane(tmuxName);
+    } catch {
+      session.lastCaptureContent = '';
+    }
+
+    this.sessions.set(conversationId, session);
+  }
+
+  /**
+   * Send a message to the Claude session and capture the response.
+   */
+  async sendMessage(conversationId: string, message: string): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (!session) {
+      this.callbacks.onError(conversationId, 'No active Claude session');
+      return;
+    }
+
+    // Capture screen before sending (baseline)
+    let beforeContent = '';
+    try {
+      beforeContent = await tmux.capturePane(session.tmuxName);
+    } catch {
+      beforeContent = '';
+    }
+
+    // Send the message via tmux send-keys
+    await tmux.sendKeys(session.tmuxName, message);
+    await tmux.sendKeys(session.tmuxName, 'Enter');
+
+    // Poll for new output — Claude needs time to respond
+    this.pollForResponse(conversationId, session, beforeContent);
+  }
+
+  /**
+   * Poll tmux capture-pane and stream output via card PATCH updates.
+   * Sends a card immediately, then updates it every 1s as content changes.
+   */
+  private pollForResponse(
+    conversationId: string,
+    session: ClaudeSession,
+    beforeContent: string
+  ): void {
+    const POLL_INTERVAL = 1000;  // 1 second between PATCH updates
     const timeout = this.config.claude.timeout;
-    active.timeoutId = setTimeout(() => {
-      proc.kill('SIGTERM');
-      this.callbacks.onError(conversationId, `Claude process timed out after ${timeout / 1000}s`);
-    }, timeout);
+    const startTime = Date.now();
+    let lastRawContent = beforeContent;
+    let lastSentContent = '';
+    let stableCount = 0;
+    let messageId: string | undefined;
 
-    // Handle stdout (JSON events)
-    proc.stdout?.on('data', (chunk: Buffer) => {
-      const events = parser.feed(chunk.toString());
-      for (const event of events) {
-        this.handleEvent(conversationId, event);
+    const poll = async () => {
+      if (Date.now() - startTime > timeout) {
+        this.callbacks.onError(conversationId, 'Claude response timed out');
+        return;
       }
-    });
 
-    // Handle stderr
-    proc.stderr?.on('data', (chunk: Buffer) => {
-      active.stderr += chunk.toString();
-    });
+      try {
+        const currentContent = await tmux.capturePane(session.tmuxName);
 
-    // Handle process exit
-    proc.on('close', (code) => {
-      if (active.timeoutId) clearTimeout(active.timeoutId);
-      this.processes.delete(conversationId);
+        // Check for interactive menu first
+        const menu = this.detectMenu(currentContent);
+        if (menu) {
+          session.lastCaptureContent = currentContent;
+          this.callbacks.onMenu(conversationId, menu);
+          return;
+        }
 
-      if (code !== 0 && active.stderr) {
-        this.callbacks.onError(conversationId, active.stderr);
+        // Extract and clean new output
+        const newOutput = this.extractNewOutput(beforeContent, currentContent);
+        const cleaned = newOutput.trim();
+
+        if (currentContent !== lastRawContent) {
+          lastRawContent = currentContent;
+          stableCount = 0;
+
+          // Content changed — send or update card
+          if (cleaned && cleaned !== lastSentContent) {
+            const meta = this.extractMetadata(currentContent);
+            if (!messageId) {
+              messageId = await this.callbacks.onStreamStart(conversationId);
+            }
+            if (messageId) {
+              this.callbacks.onStreamUpdate(conversationId, messageId, cleaned, meta);
+            }
+            lastSentContent = cleaned;
+          }
+        } else {
+          stableCount++;
+        }
+
+        // Stable for 3 polls (3 seconds) and we have content → done
+        if (stableCount >= 3 && currentContent !== beforeContent) {
+          session.lastCaptureContent = currentContent;
+          const metadata = this.extractMetadata(currentContent);
+          if (messageId && cleaned) {
+            this.callbacks.onStreamEnd(conversationId, messageId, cleaned, metadata);
+          } else if (cleaned) {
+            // Never got to create a card (very fast response) — create final one
+            messageId = await this.callbacks.onStreamStart(conversationId);
+            if (messageId) {
+              this.callbacks.onStreamEnd(conversationId, messageId, cleaned, metadata);
+            }
+          }
+          return;
+        }
+
+        setTimeout(poll, POLL_INTERVAL);
+      } catch (err) {
+        this.callbacks.onError(conversationId, `Capture failed: ${err}`);
       }
-    });
+    };
 
-    proc.on('error', (err) => {
-      if (active.timeoutId) clearTimeout(active.timeoutId);
-      this.processes.delete(conversationId);
-      this.callbacks.onError(conversationId, `Failed to start Claude: ${err.message}`);
-    });
-
-    this.processes.set(conversationId, active);
+    // Start polling after brief delay
+    setTimeout(poll, 1500);
   }
 
   /**
-   * Build CLI arguments for claude -p
+   * Extract new output by diffing before/after screen captures,
+   * then strip Claude Code's interactive UI chrome.
    */
-  private buildArgs(prompt: string, options?: StartSessionOptions): string[] {
-    const args = [
-      '-p',
-      '--output-format', 'stream-json',
-      '--verbose',
-    ];
+  private extractNewOutput(before: string, after: string): string {
+    const beforeLines = before.split('\n');
+    const afterLines = after.split('\n');
 
-    const mode = options?.permissionMode || this.config.claude.defaultMode;
-    if (mode === 'auto') {
-      args.push('--dangerously-skip-permissions');
-    } else {
-      args.push('--permission-mode', 'default');
+    // Trim trailing empty lines
+    while (beforeLines.length > 0 && beforeLines[beforeLines.length - 1].trim() === '') beforeLines.pop();
+    while (afterLines.length > 0 && afterLines[afterLines.length - 1].trim() === '') afterLines.pop();
+
+    // Find where new content starts (skip common prefix lines)
+    let startIdx = 0;
+    const minLen = Math.min(beforeLines.length, afterLines.length);
+    while (startIdx < minLen && beforeLines[startIdx] === afterLines[startIdx]) {
+      startIdx++;
     }
 
-    if (options?.resumeId) {
-      args.push('--resume', options.resumeId);
-    }
+    // Everything from startIdx in after is new
+    const newLines = afterLines.slice(startIdx);
 
-    if (options?.allowedTools && options.allowedTools.length > 0) {
-      args.push('--allowedTools', options.allowedTools.join(' '));
-    }
-
-    args.push(prompt);
-
-    return args;
+    // Clean Claude UI chrome, then format code sections as markdown
+    const cleaned = this.cleanClaudeOutput(newLines.join('\n'));
+    return this.formatAsMarkdown(cleaned);
   }
 
   /**
-   * Handle a parsed event from stdout
+   * Strip Claude Code interactive UI chrome from output.
+   * Only filter hard UI elements, keep all content.
    */
-  private handleEvent(conversationId: string, event: ClaudeBaseEvent): void {
-    if (isHookEvent(event)) {
-      return;
+  private cleanClaudeOutput(text: string): string {
+    const lines = text.split('\n');
+    const cleaned: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed) { cleaned.push(''); continue; }
+
+      // Skip separator lines (────)
+      if (/^[─━═╌]{4,}/.test(trimmed)) continue;
+
+      // Skip empty input prompt (just ❯ with nothing after)
+      if (/^❯\s*$/.test(trimmed)) continue;
+
+      // Skip Claude logo (block drawing characters only)
+      if (/^[▐▛▜▌▝▘▞▚█▟▙░▒▓\s]+$/.test(trimmed)) continue;
+
+      // Skip bottom status bar (contains git:( or Cinders)
+      if (/git:\(/.test(trimmed)) continue;
+      if (/\}@\.@\{/.test(trimmed)) continue;
+
+      // Clean: remove leading ❯ (input echo)
+      let cleanLine = line;
+      if (/^\s*❯\s+/.test(cleanLine)) {
+        cleanLine = cleanLine.replace(/^\s*❯\s+/, '');
+      }
+
+      // Clean: remove leading ● (response prefix)
+      if (/^\s*●\s/.test(cleanLine)) {
+        cleanLine = cleanLine.replace(/^\s*●\s/, '');
+      }
+
+      cleaned.push(cleanLine);
     }
 
-    if (isInitEvent(event)) {
-      this.callbacks.onInit(conversationId, event);
-      return;
+    // Collapse consecutive empty lines and deduplicate consecutive identical lines
+    const result: string[] = [];
+    let prevEmpty = false;
+    let prevLine = '';
+    for (const line of cleaned) {
+      const isEmpty = line.trim() === '';
+      if (isEmpty && prevEmpty) continue;
+      // Skip exact duplicate consecutive lines
+      if (!isEmpty && line.trim() === prevLine.trim()) continue;
+      result.push(line);
+      prevEmpty = isEmpty;
+      prevLine = line;
     }
 
-    if (isAssistantEvent(event)) {
-      this.handleAssistantEvent(conversationId, event);
-      return;
-    }
+    // Trim leading/trailing empty lines
+    let start = 0;
+    while (start < result.length && result[start].trim() === '') start++;
+    let end = result.length - 1;
+    while (end > start && result[end].trim() === '') end--;
 
-    if (isResultEvent(event)) {
-      this.callbacks.onResult(conversationId, event);
-      return;
-    }
+    return result.slice(start, end + 1).join('\n');
   }
 
   /**
-   * Handle assistant message — extract text and tool_use blocks
+   * Extract model, cwd, context from the full captured pane.
+   * Parses Claude Code's status bar and context line.
    */
-  private handleAssistantEvent(conversationId: string, event: ClaudeAssistantEvent): void {
-    for (const block of event.message.content) {
-      if (block.type === 'text' && block.text) {
-        this.callbacks.onText(conversationId, block.text);
-      } else if (block.type === 'tool_use') {
-        this.callbacks.onToolUse(conversationId, block.name, block.input);
+  private extractMetadata(content: string): ClaudeMetadata {
+    const lines = content.split('\n');
+    const metadata: ClaudeMetadata = {};
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      // Model
+      if (!metadata.model) {
+        const modelMatch = trimmed.match(/\b((?:Opus|Sonnet|Haiku)\s+[\d.]+(?:\s*\([^)]+\))?)/i);
+        if (modelMatch) metadata.model = modelMatch[1];
+      }
+
+      // CWD
+      if (!metadata.cwd) {
+        const cwdMatch = trimmed.match(/~\/[\w./-]+/);
+        if (cwdMatch) metadata.cwd = cwdMatch[0];
+      }
+
+      // Context usage
+      if (!metadata.context) {
+        const ctxMatch = trimmed.match(/Context\s+[░▓█]+\s+(\d+%)/);
+        if (ctxMatch) metadata.context = ctxMatch[1];
+      }
+
+      // Cost: match "$X.XX" pattern in status area
+      if (!metadata.costUsd) {
+        const costMatch = trimmed.match(/\$(\d+\.?\d*)/);
+        if (costMatch) metadata.costUsd = parseFloat(costMatch[1]);
       }
     }
+
+    // Detect current status from the last meaningful lines
+    metadata.status = this.detectStatus(lines);
+
+    return metadata;
   }
 
   /**
-   * Interrupt (kill) the active Claude process for a conversation
+   * Detect Claude's current activity from screen content.
    */
-  interruptSession(conversationId: string): void {
-    const active = this.processes.get(conversationId);
-    if (active) {
-      if (active.timeoutId) clearTimeout(active.timeoutId);
-      active.process.kill('SIGINT');
-      this.processes.delete(conversationId);
+  private detectStatus(lines: string[]): string {
+    // Scan from bottom up for activity indicators
+    for (let i = lines.length - 1; i >= Math.max(0, lines.length - 15); i--) {
+      const trimmed = lines[i].trim();
+
+      // Tool in progress: "● Bash(...)" or "● Read(...)" etc.
+      const toolMatch = trimmed.match(/^●\s*(Bash|Edit|Read|Write|Update|Glob|Grep|WebSearch|WebFetch|Agent|TaskCreate|TaskUpdate)\b/);
+      if (toolMatch) return toolMatch[1];
+
+      // Thinking indicator
+      if (/^●\s/.test(trimmed) && !trimmed.match(/^●\s*(high|medium|low)/i)) return 'thinking';
+
+      // Churning / processing
+      if (/^✻/.test(trimmed)) return 'processing';
+
+      // Waiting for input (❯ prompt)
+      if (/^❯\s*$/.test(trimmed)) return 'done';
+    }
+
+    return 'working';
+  }
+
+  /**
+   * Format cleaned output with markdown code blocks for tool outputs.
+   * Detects tool call patterns and wraps their content in ``` blocks.
+   */
+  private formatAsMarkdown(text: string): string {
+    const lines = text.split('\n');
+    const result: string[] = [];
+    let inCodeBlock = false;
+    let currentTool = '';
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+
+      // Detect tool call headers: "Update(...)", "Bash(...)", "Edit(...)", "Read(...)", "Write(...)" etc.
+      const toolMatch = trimmed.match(/^(Update|Bash|Edit|Read|Write|Glob|Grep|WebSearch|WebFetch)\((.+)\)$/);
+      if (toolMatch) {
+        if (inCodeBlock) { result.push('```'); inCodeBlock = false; }
+        currentTool = toolMatch[1];
+        result.push(`**${currentTool}**(${toolMatch[2]})`);
+        // Use diff syntax for Edit/Update tools, bash for Bash, plain for others
+        const lang = (currentTool === 'Edit' || currentTool === 'Update') ? 'diff'
+                   : (currentTool === 'Bash') ? 'bash'
+                   : '';
+        result.push('```' + lang);
+        inCodeBlock = true;
+        continue;
+      }
+
+      // Detect end of tool output: a line starting with ● or ✻ (next section)
+      if (inCodeBlock && /^[●✻]/.test(trimmed)) {
+        result.push('```');
+        inCodeBlock = false;
+      }
+
+      // Detect plain text response lines (● prefix was already stripped)
+      // These should not be in a code block
+      if (inCodeBlock && !trimmed.startsWith('⎿') && !trimmed.match(/^\s/) && !trimmed.match(/^[-+\d]/) && trimmed.length > 0) {
+        // Looks like a natural language line, close code block
+        result.push('```');
+        inCodeBlock = false;
+      }
+
+      result.push(lines[i]);
+    }
+
+    if (inCodeBlock) { result.push('```'); }
+
+    return result.join('\n');
+  }
+
+  /**
+   * Detect interactive menus (numbered selection, yes/no) in capture-pane output.
+   * Returns a DetectedMenu if found, null otherwise.
+   */
+  private detectMenu(content: string): DetectedMenu | null {
+    const lines = content.split('\n');
+
+    const options: MenuOption[] = [];
+    let title = '';
+    let hint = '';
+    const contextLines: string[] = [];  // Text above the options (command description, etc.)
+    let firstOptionIdx = -1;
+
+    for (let i = 0; i < lines.length; i++) {
+      const trimmed = lines[i].trim();
+
+      // Detect numbered options: "1. Label" or "❯ 1. Label" or "> 1. Label"
+      const optMatch = trimmed.match(/^(?:[❯>]\s*)?(\d+)\.\s+(.+?)(?:\s+·\s+.*)?$/);
+      if (optMatch) {
+        if (firstOptionIdx < 0) firstOptionIdx = i;
+        const index = parseInt(optMatch[1], 10);
+        let label = optMatch[2].replace(/\s*[✔✓]\s*/, '').trim();
+        const descSplit = label.split(/\s{2,}/);
+        if (descSplit.length > 1) label = descSplit[0];
+        const selected = /[❯>]/.test(trimmed) || /[✔✓]/.test(trimmed);
+        options.push({ label, index, selected });
+        continue;
+      }
+
+      // Detect hint line
+      if (/Enter to confirm|Esc to exit|y\/n|Y\/N/.test(trimmed)) {
+        hint = trimmed;
+      }
+
+      // Detect yes/no prompt
+      if (/\(y\/n\)|\[y\/N\]|\[Y\/n\]/i.test(trimmed)) {
+        return {
+          title: trimmed.replace(/\s*\(y\/n\)|\[y\/N\]|\[Y\/n\]/i, '').trim(),
+          options: [
+            { label: 'Yes', index: 0, selected: false },
+            { label: 'No', index: 1, selected: false },
+          ],
+          hint: 'y/n',
+        };
+      }
+    }
+
+    // Capture context: meaningful lines before the first option
+    // These describe what the menu is about (e.g. "Claude wants to run: wc -l")
+    if (firstOptionIdx > 0) {
+      for (let i = firstOptionIdx - 1; i >= 0; i--) {
+        const trimmed = lines[i].trim();
+        if (!trimmed) continue;
+        // Stop at UI chrome
+        if (/^[─━═╌]{4,}/.test(trimmed)) break;
+        if (/^❯\s*$/.test(trimmed)) break;
+        if (/^[▐▛▜▌▝▘█░▒▓\s]+$/.test(trimmed)) break;
+        if (/git:\(/.test(trimmed)) break;
+        if (/\}@\.@\{/.test(trimmed)) break;
+        // Clean ● prefix
+        let clean = trimmed.replace(/^[●⎿]\s*/, '');
+        if (clean) contextLines.unshift(clean);
+        // Take at most 5 lines of context
+        if (contextLines.length >= 5) break;
+      }
+    }
+
+    // Build title from context + detected title keywords
+    if (contextLines.length > 0) {
+      title = contextLines.join('\n');
+    }
+
+    // Need at least 2 options to be a menu
+    if (options.length >= 2) {
+      return { title, options, hint };
+    }
+
+    return null;
+  }
+
+  /**
+   * Send a menu selection by navigating to the option and pressing Enter.
+   * Uses arrow keys to move from current selection to target.
+   */
+  async selectMenuOption(conversationId: string, targetIndex: number): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (!session) {
+      console.log(`[MENU] no session for ${conversationId}`);
+      this.callbacks.onError(conversationId, 'No active Claude session');
+      return;
+    }
+
+    const beforeContent = await tmux.capturePane(session.tmuxName);
+    const menu = this.detectMenu(beforeContent);
+    console.log(`[MENU] detected=${!!menu}, options=${menu?.options.length || 0}, target=${targetIndex}`);
+    if (!menu) {
+      // Not a menu — just send the number as text input
+      await tmux.sendKeys(session.tmuxName, String(targetIndex));
+      await tmux.sendKeys(session.tmuxName, 'Enter');
+      // Poll for response
+      setTimeout(() => {
+        this.pollForResponse(conversationId, session, beforeContent);
+      }, 1000);
+      return;
+    }
+
+    // Find currently selected option
+    const currentIdx = menu.options.findIndex(o => o.selected);
+    const targetOptIdx = menu.options.findIndex(o => o.index === targetIndex);
+    if (targetOptIdx < 0) {
+      this.callbacks.onError(conversationId, `Option ${targetIndex} not found in menu`);
+      return;
+    }
+
+    // Navigate with arrow keys
+    if (currentIdx >= 0) {
+      const diff = targetOptIdx - currentIdx;
+      const key = diff > 0 ? 'Down' : 'Up';
+      for (let i = 0; i < Math.abs(diff); i++) {
+        await tmux.sendKeys(session.tmuxName, key);
+        await new Promise(r => setTimeout(r, 100));
+      }
+    }
+
+    await tmux.sendKeys(session.tmuxName, 'Enter');
+
+    // Poll for response after selection
+    setTimeout(() => {
+      this.pollForResponse(conversationId, session, beforeContent);
+    }, 1000);
+  }
+
+  /**
+   * Send yes/no response
+   */
+  async sendYesNo(conversationId: string, yes: boolean): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (!session) return;
+
+    const beforeContent = await tmux.capturePane(session.tmuxName);
+    await tmux.sendKeys(session.tmuxName, yes ? 'y' : 'n');
+
+    setTimeout(() => {
+      this.pollForResponse(conversationId, session, beforeContent);
+    }, 1000);
+  }
+
+  /**
+   * Send interrupt (Escape or Ctrl-C) to Claude session
+   */
+  async interruptSession(conversationId: string): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (session) {
+      await tmux.sendKeys(session.tmuxName, 'C-c');
     }
   }
 
   /**
-   * Check if a conversation has an active Claude process
+   * Check if a session exists
    */
   isSessionActive(conversationId: string): boolean {
-    return this.processes.has(conversationId);
+    return this.sessions.has(conversationId);
   }
 
   /**
-   * Kill all active processes
+   * Check if tmux session still exists
    */
-  killAll(): void {
-    for (const [convId] of this.processes) {
-      this.interruptSession(convId);
+  async isSessionAlive(conversationId: string): Promise<boolean> {
+    const session = this.sessions.get(conversationId);
+    if (!session) return false;
+    return tmux.sessionExists(session.tmuxName);
+  }
+
+  /**
+   * Kill a Claude session
+   */
+  async killSession(conversationId: string): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (session) {
+      try {
+        await tmux.killSession(session.tmuxName);
+      } catch { /* ignore */ }
+      this.sessions.delete(conversationId);
+    }
+  }
+
+  /**
+   * Reconnect to an existing Claude tmux session (after bot restart).
+   * Registers the session in memory so messages can be routed to it.
+   */
+  async reconnectSession(conversationId: string, tmuxName: string): Promise<boolean> {
+    const exists = await tmux.sessionExists(tmuxName);
+    if (!exists) return false;
+
+    const session: ClaudeSession = {
+      tmuxName,
+      conversationId,
+      lastCaptureContent: '',
+    };
+
+    try {
+      session.lastCaptureContent = await tmux.capturePane(tmuxName);
+    } catch {
+      session.lastCaptureContent = '';
+    }
+
+    this.sessions.set(conversationId, session);
+    console.log(`[CLAUDE] Reconnected to tmux session: ${tmuxName}`);
+    return true;
+  }
+
+  /**
+   * Kill all sessions
+   */
+  async killAll(): Promise<void> {
+    for (const [convId] of this.sessions) {
+      await this.killSession(convId);
     }
   }
 }

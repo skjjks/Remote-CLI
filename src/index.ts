@@ -3,89 +3,56 @@ import { getConfig } from './config';
 import { getFeishuBot } from './bot/feishu';
 import {
   SmartCardBuilder,
-  CardBuilder,
   isMoreOptionsValue,
   isPermitAction,
+  isMenuAction,
+  getMenuIndex,
   PERMIT_ALLOW,
   PERMIT_DENY,
   PERMIT_ALWAYS,
-  CompletionStats,
 } from './bot/card';
 import { getSessionManager, SessionInfo } from './terminal/session';
-import { getPtyManager, OutputCallback, PromptDetectionResult } from './terminal/pty';
+import * as tmux from './terminal/tmux';
 import { ClaudeManager, ClaudeManagerCallbacks } from './claude/manager';
-import { ClaudeInitEvent, ClaudeResultEvent } from './claude/types';
 
 // ── State ──
 
 /** Active session per conversation (session ID) */
 const activeSessions: Map<string, number> = new Map();
 
-/** Pending prompts waiting for user response (Terminal mode) */
-const pendingPrompts: Map<string, PromptDetectionResult> = new Map();
-
-/** Card message IDs for updates */
-const lastCardMessageIds: Map<string, string> = new Map();
+/** Pending prompts for terminal mode interactive responses */
+const pendingPrompts: Map<string, any> = new Map();
 
 const COMMAND_PREFIX = '!';
 
-// ── Card builders ──
+// ── Card builder ──
 
 const smartCard = new SmartCardBuilder();
-const legacyCard = new CardBuilder();
 
 // ── Claude callbacks ──
 
 const claudeCallbacks: ClaudeManagerCallbacks = {
-  onInit: async (conversationId, event: ClaudeInitEvent) => {
+  onStreamStart: async (conversationId) => {
     const feishuBot = getFeishuBot();
-    const sessionManager = getSessionManager();
-
-    // Store Claude session ID for --resume
-    const activeSessionId = activeSessions.get(conversationId);
-    if (activeSessionId !== undefined) {
-      sessionManager.updateClaudeSessionId(activeSessionId, event.session_id);
-    }
-
-    const card = smartCard.buildInitCard(event.session_id, event.model);
-    await feishuBot.sendCard(conversationId, card);
+    const card = smartCard.buildTextCard('thinking...');
+    return await feishuBot.sendCard(conversationId, card);
   },
 
-  onText: async (conversationId, text) => {
+  onStreamUpdate: (conversationId, messageId, content, metadata) => {
     const feishuBot = getFeishuBot();
-    const card = smartCard.buildTextCard(text);
-    const msgId = await feishuBot.sendCard(conversationId, card);
-    if (msgId) lastCardMessageIds.set(conversationId, msgId);
+    const card = smartCard.buildTextCard(content, metadata);
+    feishuBot.updateCard(messageId, card).catch(() => {});
   },
 
-  onToolUse: async (conversationId, toolName, input) => {
+  onStreamEnd: (conversationId, messageId, content, metadata) => {
     const feishuBot = getFeishuBot();
-    const card = smartCard.buildToolCallCard(toolName, input);
-    const msgId = await feishuBot.sendCard(conversationId, card);
-    if (msgId) lastCardMessageIds.set(conversationId, msgId);
+    const card = smartCard.buildTextCard(content, metadata);
+    feishuBot.updateCard(messageId, card).catch(() => {});
   },
 
-  onResult: async (conversationId, event: ClaudeResultEvent) => {
+  onMenu: async (conversationId, menu) => {
     const feishuBot = getFeishuBot();
-
-    // Check for permission denials
-    if (event.permission_denials && event.permission_denials.length > 0) {
-      for (const denial of event.permission_denials) {
-        const card = smartCard.buildPermissionCard(denial.tool, denial.reason);
-        await feishuBot.sendCard(conversationId, card);
-      }
-      return;
-    }
-
-    // Send completion card
-    const stats: CompletionStats = {
-      durationMs: event.duration_ms,
-      costUsd: event.total_cost_usd,
-      inputTokens: event.usage.input_tokens,
-      outputTokens: event.usage.output_tokens,
-      numTurns: event.num_turns,
-    };
-    const card = smartCard.buildCompletionCard(stats);
+    const card = smartCard.buildMenuCard(menu.title, menu.options, menu.hint);
     await feishuBot.sendCard(conversationId, card);
   },
 
@@ -96,44 +63,6 @@ const claudeCallbacks: ClaudeManagerCallbacks = {
   },
 };
 
-// ── Terminal output callback ──
-
-const handlePtyOutput: OutputCallback = async (
-  sessionId: number,
-  output: string,
-  prompt?: PromptDetectionResult
-) => {
-  const sessionManager = getSessionManager();
-  const session = sessionManager.getSession(sessionId);
-  if (!session?.conversationId) return;
-
-  const feishuBot = getFeishuBot();
-  const conversationId = session.conversationId;
-
-  // Check for binary output
-  const { MessageFormatter } = await import('./bot/message');
-  const formatter = new MessageFormatter();
-  if (formatter.detectBinary(output)) {
-    await feishuBot.sendText(conversationId, 'Binary output detected.');
-    return;
-  }
-
-  // Check for prompts (Terminal mode)
-  if (prompt?.type) {
-    const card = legacyCard.buildCard(prompt);
-    if (card) {
-      await feishuBot.sendCard(conversationId, card);
-      pendingPrompts.set(conversationId, prompt);
-    } else {
-      const termCard = smartCard.buildTerminalOutputCard(output);
-      await feishuBot.sendCard(conversationId, termCard);
-    }
-  } else {
-    const termCard = smartCard.buildTerminalOutputCard(output);
-    await feishuBot.sendCard(conversationId, termCard);
-  }
-};
-
 // ── Lazy managers ──
 
 let _claudeManager: ClaudeManager | null = null;
@@ -142,6 +71,70 @@ function getClaudeManager(): ClaudeManager {
     _claudeManager = new ClaudeManager(claudeCallbacks);
   }
   return _claudeManager;
+}
+
+// ── Helpers ──
+
+/**
+ * Extract command output from tmux capture-pane result.
+ * Finds the last occurrence of the command, takes everything after it
+ * until the next shell prompt, and strips empty/padding lines.
+ */
+function extractCommandOutput(captured: string, command: string): { output: string; cwd: string } {
+  const lines = captured.split('\n');
+
+  // Trim trailing empty lines (tmux pads to full screen height)
+  let end = lines.length - 1;
+  while (end >= 0 && lines[end].trim() === '') end--;
+  const trimmedLines = lines.slice(0, end + 1);
+
+  // Shell prompt pattern: anything ending with $ or #
+  const promptPattern = /[$#]\s*$/;
+
+  // Find the last line that contains the command (the command echo line)
+  let cmdLineIdx = -1;
+  for (let i = trimmedLines.length - 1; i >= 0; i--) {
+    if (trimmedLines[i].includes('$ ' + command) || trimmedLines[i].endsWith(command)) {
+      cmdLineIdx = i;
+      break;
+    }
+  }
+
+  // Extract cwd from the last prompt line
+  let cwd = '';
+  for (let i = trimmedLines.length - 1; i >= 0; i--) {
+    // Match pattern like user@host:~/path$
+    const cwdMatch = trimmedLines[i].match(/:([~\/][^\$#]*)[\$#]/);
+    if (cwdMatch) {
+      cwd = cwdMatch[1];
+      break;
+    }
+  }
+
+  // Extract output: lines after the command until the next prompt
+  if (cmdLineIdx >= 0) {
+    const outputLines: string[] = [];
+    for (let i = cmdLineIdx + 1; i < trimmedLines.length; i++) {
+      // Stop at the next shell prompt
+      if (promptPattern.test(trimmedLines[i])) break;
+      outputLines.push(trimmedLines[i]);
+    }
+
+    // Trim leading/trailing empty lines in output
+    let start = 0;
+    while (start < outputLines.length && outputLines[start].trim() === '') start++;
+    let oEnd = outputLines.length - 1;
+    while (oEnd > start && outputLines[oEnd].trim() === '') oEnd--;
+
+    const output = outputLines.slice(start, oEnd + 1).join('\n');
+    return { output: output || '(no output)', cwd };
+  }
+
+  // Fallback: couldn't find command, return all non-empty non-prompt lines
+  const fallback = trimmedLines
+    .filter(l => l.trim() && !promptPattern.test(l))
+    .join('\n');
+  return { output: fallback || '(no output)', cwd };
 }
 
 // ── Command handling ──
@@ -171,6 +164,10 @@ async function handleCommand(
     const args = parts.slice(1);
 
     switch (command) {
+      case 'help':
+      case 'h':
+        await feishuBot.sendCard(conversationId, smartCard.buildHelpCard());
+        return;
       case 'sh':
         await handleShellCommand(conversationId, args.join(' '));
         return;
@@ -198,14 +195,14 @@ async function handleCommand(
       case 'key':
         await handleSpecialKey(conversationId, args.join(' '));
         return;
+      case 'cd':
+        await handleCd(conversationId, args.join(' '));
+        return;
       case 'whoami':
         await feishuBot.sendText(conversationId, `Your User ID: ${senderId}`);
         return;
       default:
-        await feishuBot.sendText(
-          conversationId,
-          `Unknown command: ${command}\nAvailable: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !whoami`
-        );
+        await feishuBot.sendText(conversationId, `Unknown command: ${command}\nType !help to see all commands`);
         return;
     }
   }
@@ -219,9 +216,9 @@ async function handleCommand(
       if (activeSessionId !== undefined) {
         const sessionManager = getSessionManager();
         const session = sessionManager.getSession(activeSessionId);
-        if (session?.type === 'terminal') {
-          const ptyManager = getPtyManager();
-          ptyManager.writeToSession(activeSessionId, `${num}\n`);
+        if (session?.type === 'terminal' && session.tmuxName) {
+          await tmux.sendKeys(session.tmuxName, String(num));
+          await tmux.sendKeys(session.tmuxName, 'Enter');
           pendingPrompts.delete(conversationId);
           return;
         }
@@ -236,16 +233,25 @@ async function handleCommand(
     const session = sessionManager.getSession(activeSessionId);
 
     if (session?.type === 'claude') {
-      // Send to Claude via --resume
-      const claudeManager = getClaudeManager();
-      claudeManager.startSession(conversationId, trimmedMessage, {
-        resumeId: session.claudeSessionId,
-        permissionMode: session.permissionMode || 'default',
-        allowedTools: session.allowedTools,
-      });
-    } else if (session?.type === 'terminal') {
-      const ptyManager = getPtyManager();
-      ptyManager.writeToSession(activeSessionId, trimmedMessage + '\n');
+      // Route through handleClaudeCommand which handles reconnection
+      handleClaudeCommand(conversationId, trimmedMessage);
+    } else if (session?.type === 'terminal' && session.tmuxName) {
+      // Send via tmux + capture
+      const cmd = trimmedMessage;
+      const sid = activeSessionId;
+      const tmuxName = session.tmuxName;
+      await tmux.sendKeys(tmuxName, cmd);
+      await tmux.sendKeys(tmuxName, 'Enter');
+      setTimeout(async () => {
+        try {
+          const captured = await tmux.capturePane(tmuxName);
+          const { output, cwd } = extractCommandOutput(captured, cmd);
+          const card = smartCard.buildTerminalOutputCard(output, { command: cmd, sessionId: sid, cwd });
+          await feishuBot.sendCard(conversationId, card);
+        } catch (err) {
+          console.error('Failed to capture pane:', err);
+        }
+      }, 1500);
     }
   } else {
     // No active session — create Claude session by default
@@ -263,7 +269,6 @@ async function handleShellCommand(conversationId: string, command: string): Prom
   }
 
   const sessionManager = getSessionManager();
-  const ptyManager = getPtyManager(handlePtyOutput);
 
   // Find or create a terminal session
   let activeSessionId = activeSessions.get(conversationId);
@@ -274,16 +279,31 @@ async function handleShellCommand(conversationId: string, command: string): Prom
   }
 
   if (!session || session.type !== 'terminal') {
-    // Create a new terminal session
     session = await sessionManager.createSession(conversationId);
     activeSessions.set(conversationId, session.id);
-    activeSessionId = session.id;
-    await ptyManager.spawnSession(session.id, session.tmuxName!);
-  } else if (!ptyManager.isSessionActive(activeSessionId!)) {
-    await ptyManager.spawnSession(activeSessionId!, session.tmuxName!);
   }
 
-  ptyManager.writeToSession(activeSessionId!, command + '\n');
+  // Send command via tmux send-keys (not PTY stream)
+  await tmux.sendKeys(session.tmuxName!, command);
+  await tmux.sendKeys(session.tmuxName!, 'Enter');
+
+  // Wait for command to execute, then capture rendered screen
+  const sessionId = session.id;
+  const tmuxName = session.tmuxName!;
+  setTimeout(async () => {
+    try {
+      const captured = await tmux.capturePane(tmuxName);
+      const { output, cwd } = extractCommandOutput(captured, command);
+      const card = smartCard.buildTerminalOutputCard(output, {
+        command,
+        sessionId,
+        cwd,
+      });
+      await feishuBot.sendCard(conversationId, card);
+    } catch (err) {
+      console.error('Failed to capture pane:', err);
+    }
+  }, 1500);
 }
 
 async function handleClaudeCommand(conversationId: string, prompt: string): Promise<void> {
@@ -304,18 +324,57 @@ async function handleClaudeCommand(conversationId: string, prompt: string): Prom
     session = sessionManager.getSession(activeSessionId);
   }
 
+  // Create new Claude tmux session if needed (fire-and-forget — don't block Feishu handler)
   if (!session || session.type !== 'claude') {
-    // Create a new Claude session
     session = sessionManager.createClaudeSession(conversationId);
     activeSessions.set(conversationId, session.id);
+
+    const tmuxName = `claude-${session.id}`;
+    session.tmuxName = tmuxName;
+    sessionManager.updateClaudeSessionId(session.id, tmuxName);
+
+    // Non-blocking: start session in background, send message when ready
+    feishuBot.sendText(conversationId, 'Starting Claude session...').catch(() => {});
+    claudeManager.startSession(conversationId, tmuxName).then(() => {
+      claudeManager.sendMessage(conversationId, prompt).catch(err => {
+        console.error('Failed to send message to Claude:', err);
+      });
+    }).catch(err => {
+      console.error('Failed to start Claude session:', err);
+      feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(() => {});
+    });
+    return;
   }
 
-  // Start Claude process
-  claudeManager.startSession(conversationId, prompt, {
-    resumeId: session.claudeSessionId,
-    permissionMode: session.permissionMode || 'default',
-    allowedTools: session.allowedTools,
-  });
+  // Check if tmux session is still alive
+  const alive = await claudeManager.isSessionAlive(conversationId);
+  console.log(`[CLAUDE] session alive=${alive}, prompt="${prompt.slice(0, 20)}"`);
+  if (!alive) {
+    const tmuxName = `claude-${session.id}-${Date.now()}`;
+    feishuBot.sendText(conversationId, 'Restarting Claude session...').catch(() => {});
+    claudeManager.startSession(conversationId, tmuxName).then(() => {
+      claudeManager.sendMessage(conversationId, prompt).catch(err => {
+        console.error('Failed to send message to Claude:', err);
+      });
+    }).catch(err => {
+      console.error('Failed to restart Claude session:', err);
+    });
+    return;
+  }
+
+  // Existing session — check if this is a menu selection (single number)
+  const num = parseInt(prompt, 10);
+  if (!isNaN(num) && prompt.trim() === String(num)) {
+    console.log(`[CLAUDE] selectMenuOption(${num})`);
+    claudeManager.selectMenuOption(conversationId, num).catch(err => {
+      console.error('Failed to select menu option:', err);
+    });
+  } else {
+    // Regular message
+    claudeManager.sendMessage(conversationId, prompt).catch(err => {
+      console.error('Failed to send message to Claude:', err);
+    });
+  }
 }
 
 async function handleNewSession(conversationId: string): Promise<void> {
@@ -368,11 +427,12 @@ async function handleSwitchSession(conversationId: string, idStr?: string): Prom
     return;
   }
 
-  // For terminal sessions, ensure PTY is active
+  // For terminal sessions, verify tmux session still exists
   if (session.type === 'terminal' && session.tmuxName) {
-    const ptyManager = getPtyManager(handlePtyOutput);
-    if (!ptyManager.isSessionActive(sessionId)) {
-      await ptyManager.spawnSession(sessionId, session.tmuxName);
+    const exists = await tmux.sessionExists(session.tmuxName);
+    if (!exists) {
+      await feishuBot.sendText(conversationId, `Session ${sessionId} no longer exists`);
+      return;
     }
   }
 
@@ -402,12 +462,11 @@ async function handleKillSession(conversationId: string, idStr?: string): Promis
   }
 
   // Kill the appropriate process
-  if (session.type === 'terminal') {
-    const ptyManager = getPtyManager();
-    await ptyManager.killSession(sessionId);
+  if (session.type === 'terminal' && session.tmuxName) {
+    try { await tmux.killSession(session.tmuxName); } catch { /* ignore */ }
   } else if (session.type === 'claude') {
     const claudeManager = getClaudeManager();
-    claudeManager.interruptSession(conversationId);
+    await claudeManager.killSession(conversationId);
   }
 
   await sessionManager.killSession(sessionId);
@@ -433,13 +492,47 @@ async function handleInterrupt(conversationId: string): Promise<void> {
 
   if (session?.type === 'claude') {
     const claudeManager = getClaudeManager();
-    claudeManager.interruptSession(conversationId);
-    await feishuBot.sendText(conversationId, 'Claude process interrupted');
-  } else if (session?.type === 'terminal') {
-    const ptyManager = getPtyManager();
-    ptyManager.sendInterrupt(activeSessionId);
+    await claudeManager.interruptSession(conversationId);
+    await feishuBot.sendText(conversationId, 'Claude interrupted');
+  } else if (session?.type === 'terminal' && session.tmuxName) {
+    await tmux.sendKeys(session.tmuxName, 'C-c');
     await feishuBot.sendText(conversationId, 'Sent Ctrl-C');
   }
+}
+
+async function handleCd(conversationId: string, dir: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+  if (!dir) {
+    await feishuBot.sendText(conversationId, 'Usage: !cd <path>\nExample: !cd ~/workspace/my-project');
+    return;
+  }
+
+  const sessionManager = getSessionManager();
+  const claudeManager = getClaudeManager();
+
+  // Kill current Claude session if exists
+  const activeSessionId = activeSessions.get(conversationId);
+  if (activeSessionId !== undefined) {
+    const session = sessionManager.getSession(activeSessionId);
+    if (session?.type === 'claude') {
+      await claudeManager.killSession(conversationId);
+      await sessionManager.killSession(activeSessionId);
+    }
+  }
+
+  // Create new Claude session in the specified directory
+  const session = sessionManager.createClaudeSession(conversationId);
+  activeSessions.set(conversationId, session.id);
+
+  const tmuxName = `claude-${session.id}`;
+  session.tmuxName = tmuxName;
+  sessionManager.updateClaudeSessionId(session.id, tmuxName);
+
+  feishuBot.sendText(conversationId, `Switching to ${dir} ...`).catch(() => {});
+  claudeManager.startSession(conversationId, tmuxName, dir).catch(err => {
+    console.error('Failed to start Claude in dir:', err);
+    feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(() => {});
+  });
 }
 
 async function handleModeSwitch(conversationId: string, mode?: string): Promise<void> {
@@ -483,8 +576,15 @@ async function handleSpecialKey(conversationId: string, key?: string): Promise<v
     return;
   }
 
-  const ptyManager = getPtyManager();
-  ptyManager.sendSpecialKey(activeSessionId, key);
+  // Map common key names to tmux key names
+  const keyMap: Record<string, string> = {
+    up: 'Up', down: 'Down', left: 'Left', right: 'Right',
+    enter: 'Enter', tab: 'Tab', escape: 'Escape',
+    home: 'Home', end: 'End', pgup: 'PageUp', pgdn: 'PageDown',
+    'ctrl+c': 'C-c', 'ctrl+d': 'C-d', 'ctrl+z': 'C-z', 'ctrl+l': 'C-l',
+  };
+  const tmuxKey = keyMap[key.toLowerCase()] || key;
+  await tmux.sendKeys(session.tmuxName!, tmuxKey);
 }
 
 // ── Card action handling ──
@@ -498,6 +598,16 @@ async function handleCardAction(
 
   if (!feishuBot.isUserAllowed(senderId)) return;
 
+  // Handle menu selection (Claude interactive menus)
+  if (isMenuAction(value)) {
+    const claudeManager = getClaudeManager();
+    const menuIndex = getMenuIndex(value);
+    if (menuIndex >= 0) {
+      await claudeManager.selectMenuOption(conversationId, menuIndex);
+    }
+    return;
+  }
+
   // Handle permission card actions
   if (isPermitAction(value)) {
     await handlePermitAction(conversationId, value);
@@ -509,7 +619,7 @@ async function handleCardAction(
     const pendingPrompt = pendingPrompts.get(conversationId);
     if (pendingPrompt && pendingPrompt.options.length > 4) {
       const remainingOptions = pendingPrompt.options.slice(4);
-      const lines = remainingOptions.map((opt, i) => `${i + 4}. ${opt.label}`);
+      const lines = remainingOptions.map((opt: any, i: number) => `${i + 4}. ${opt.label}`);
       await feishuBot.sendText(conversationId, `More options:\n${lines.join('\n')}\nType the number to select.`);
     }
     return;
@@ -520,9 +630,9 @@ async function handleCardAction(
   if (activeSessionId !== undefined) {
     const sessionManager = getSessionManager();
     const session = sessionManager.getSession(activeSessionId);
-    if (session?.type === 'terminal') {
-      const ptyManager = getPtyManager();
-      ptyManager.writeToSession(activeSessionId, `${value}\n`);
+    if (session?.type === 'terminal' && session.tmuxName) {
+      await tmux.sendKeys(session.tmuxName, value);
+      await tmux.sendKeys(session.tmuxName, 'Enter');
       pendingPrompts.delete(conversationId);
     }
   }
@@ -563,8 +673,21 @@ async function main(): Promise<void> {
   const sessionManager = getSessionManager();
   await sessionManager.reconnectSessions();
 
-  // Initialize PTY manager with output callback
-  getPtyManager(handlePtyOutput);
+  // Reconnect Claude tmux sessions that survived bot restart
+  const claudeManager = getClaudeManager();
+  const allSessions = sessionManager.getSessions();
+  for (const session of allSessions) {
+    if (session.type === 'claude' && session.tmuxName && session.conversationId) {
+      const ok = await claudeManager.reconnectSession(session.conversationId, session.tmuxName);
+      if (ok) {
+        activeSessions.set(session.conversationId, session.id);
+      } else {
+        // tmux session gone, clean up
+        console.log(`[INIT] Claude session ${session.id} (${session.tmuxName}) no longer exists, removing`);
+        await sessionManager.killSession(session.id).catch(() => {});
+      }
+    }
+  }
 
   // Create event dispatcher
   const eventDispatcher = new lark.EventDispatcher({
@@ -574,18 +697,28 @@ async function main(): Promise<void> {
   // Register message event handler
   eventDispatcher.register({
     'im.message.receive_v1': async (data: any) => {
-      try {
-        const message = feishuBot.parseMessage(data);
-        if (message) {
-          await handleCommand(message.conversationId, message.senderId, message.content);
-        }
-      } catch (error) {
-        console.error('Error handling message:', error);
+      const message = feishuBot.parseMessage(data);
+      if (message) {
+        console.log(`[MSG] ${message.content.slice(0, 50)}`);
+        // Add typing reaction, process, then remove
+        const doWork = async () => {
+          const reactionId = await feishuBot.addReaction(message.messageId, 'Typing');
+          try {
+            await handleCommand(message.conversationId, message.senderId, message.content);
+          } finally {
+            if (reactionId) {
+              feishuBot.removeReaction(message.messageId, reactionId).catch(() => {});
+            }
+          }
+        };
+        doWork().catch(err => console.error('[MSG] Error:', err));
       }
     },
   });
 
   // Create WebSocket client
+  // Note: Card action callbacks (button clicks) are NOT supported in WebSocket mode.
+  // Users interact by typing numbers/text instead of clicking buttons.
   const wsClient = new lark.WSClient({
     appId: config.feishu.appId,
     appSecret: config.feishu.appSecret,

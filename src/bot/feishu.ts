@@ -140,7 +140,7 @@ export class FeishuBot {
    */
   async sendText(conversationId: string, text: string): Promise<void> {
     try {
-      await this.client.im.message.create({
+      const response = await this.client.im.message.create({
         params: {
           receive_id_type: 'chat_id',
         },
@@ -150,8 +150,14 @@ export class FeishuBot {
           content: JSON.stringify({ text }),
         },
       });
-    } catch (error) {
-      console.error('Failed to send text message:', error);
+      const res = response as any;
+      if (res?.code && res.code !== 0) {
+        console.error('[API] sendText error:', res.code, res.msg);
+      } else {
+        console.log('[API] sendText OK, msg_id:', res?.data?.message_id);
+      }
+    } catch (error: any) {
+      console.error('[API] sendText FAILED:', error?.code, error?.msg || error?.message || error);
       throw error;
     }
   }
@@ -172,9 +178,15 @@ export class FeishuBot {
           content: JSON.stringify(card),
         },
       });
-      return (response as any)?.data?.message_id;
-    } catch (error) {
-      console.error('Failed to send card:', error);
+      const res = response as any;
+      if (res?.code && res.code !== 0) {
+        console.error('[API] sendCard error:', res.code, res.msg);
+        return undefined;
+      }
+      console.log('[API] sendCard OK, msg_id:', res?.data?.message_id);
+      return res?.data?.message_id;
+    } catch (error: any) {
+      console.error('[API] sendCard FAILED:', error?.code, error?.msg || error?.message || error);
       throw error;
     }
   }
@@ -196,6 +208,38 @@ export class FeishuBot {
     } catch (error) {
       console.error('Failed to update card:', error);
       // Don't throw — card update failures are non-critical
+    }
+  }
+
+  /**
+   * Add a reaction (emoji) to a message
+   */
+  async addReaction(messageId: string, emojiType: string): Promise<string | undefined> {
+    try {
+      const response = await this.client.im.messageReaction.create({
+        path: { message_id: messageId },
+        data: { reaction_type: { emoji_type: emojiType } },
+      });
+      const res = response as any;
+      if (res?.code && res.code !== 0) {
+        console.error('[API] addReaction error:', res.code, res.msg);
+        return undefined;
+      }
+      console.log('[API] addReaction OK:', res?.data?.reaction_id);
+      return res?.data?.reaction_id;
+    } catch (err: any) {
+      console.error('[API] addReaction FAILED:', err?.code, err?.msg || err?.message || err);
+      return undefined;
+    }
+  }
+
+  async removeReaction(messageId: string, reactionId: string): Promise<void> {
+    try {
+      await this.client.im.messageReaction.delete({
+        path: { message_id: messageId, reaction_id: reactionId },
+      });
+    } catch {
+      // Non-critical
     }
   }
 
