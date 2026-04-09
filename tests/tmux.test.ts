@@ -38,13 +38,22 @@ describe('tmux', () => {
 
   describe('createSession', () => {
     it('should execute tmux new-session with correct arguments', async () => {
-      const promise = createSession('test-session', '/bin/bash', 120, 40);
+      // createSession calls executeTmux twice (new-session + set-option),
+      // so spawn is invoked twice. Return a fresh auto-resolving mock each time.
+      vi.mocked(spawn).mockImplementation(() => {
+        const proc = {
+          stdout: { on: vi.fn() },
+          stderr: { on: vi.fn() },
+          on: vi.fn((event: string, cb: (arg?: unknown) => void) => {
+            if (event === 'close') {
+              process.nextTick(() => cb(0));
+            }
+          }),
+        };
+        return proc as unknown as ReturnType<typeof spawn>;
+      });
 
-      // Simulate successful execution
-      const call = mockProcess.on.mock.calls.find(call => call[0] === 'close');
-      call?.[1](0);
-
-      await promise;
+      await createSession('test-session', '/bin/bash', 120, 40);
 
       expect(spawn).toHaveBeenCalledWith(
         'tmux',
@@ -54,6 +63,11 @@ describe('tmux', () => {
             TERM: 'xterm-256color',
           }),
         })
+      );
+      expect(spawn).toHaveBeenCalledWith(
+        'tmux',
+        ['set-option', '-t', 'test-session', 'history-limit', '50000'],
+        expect.any(Object)
       );
     });
 
@@ -239,7 +253,7 @@ describe('tmux', () => {
 
       expect(spawn).toHaveBeenCalledWith(
         'tmux',
-        ['capture-pane', '-t', 'my-session', '-p'],
+        ['capture-pane', '-t', 'my-session', '-p', '-S', '-', '-E', '-'],
         expect.any(Object)
       );
       expect(result).toBe('line1\nline2\nline3');
