@@ -10,8 +10,7 @@ dist/
 .env.*.local
 
 # Data files
-data/*.json
-!data/.gitkeep
+data/
 
 # Logs
 logs/
@@ -34,3 +33,10 @@ coverage/
 # Temporary files
 tmp/
 temp/
+
+# Claude plugins/skills (managed separately)
+.claude/skills/
+.claude/plugins/
+
+# Context files
+.context/
