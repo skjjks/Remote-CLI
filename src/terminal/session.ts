@@ -16,6 +16,8 @@ export interface SessionInfo {
   claudeSessionId?: string;
   permissionMode?: 'default' | 'auto';
   allowedTools?: string[];
+  // Terminal interactive mode
+  rawMode?: boolean; // undefined = auto-detect, true = forced raw
 }
 
 /**
@@ -206,6 +208,18 @@ export class SessionManager {
     const session = this.getSession(sessionId);
     if (session && session.type === 'claude') {
       session.permissionMode = mode;
+      this.saveSessions();
+    }
+  }
+
+  /**
+   * Update raw mode for a terminal session
+   * undefined = auto-detect, true = forced raw mode
+   */
+  updateRawMode(sessionId: number, rawMode: boolean | undefined): void {
+    const session = this.getSession(sessionId);
+    if (session && session.type === 'terminal') {
+      session.rawMode = rawMode;
       this.saveSessions();
     }
   }

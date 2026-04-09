@@ -71,4 +71,26 @@ describe('SessionManager with session types', () => {
     expect(manager.getSession(terminal.id)?.type).toBe('terminal');
     expect(manager.getSession(claude.id)?.type).toBe('claude');
   });
+
+  describe('rawMode', () => {
+    it('should default rawMode to undefined', async () => {
+      const session = await manager.createSession('conv-raw');
+      expect(session.rawMode).toBeUndefined();
+    });
+
+    it('should update rawMode to true', async () => {
+      const session = await manager.createSession('conv-raw2');
+      manager.updateRawMode(session.id, true);
+      const updated = manager.getSession(session.id);
+      expect(updated?.rawMode).toBe(true);
+    });
+
+    it('should reset rawMode to undefined', async () => {
+      const session = await manager.createSession('conv-raw3');
+      manager.updateRawMode(session.id, true);
+      manager.updateRawMode(session.id, undefined);
+      const updated = manager.getSession(session.id);
+      expect(updated?.rawMode).toBeUndefined();
+    });
+  });
 });
