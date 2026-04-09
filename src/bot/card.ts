@@ -55,7 +55,7 @@ export interface FeishuCard {
 
 const MAX_VISIBLE_BUTTONS = 4;
 const MORE_OPTIONS_VALUE = '__more__';
-const MAX_CARD_CONTENT_LENGTH = 2000;
+const MAX_CARD_CONTENT_LENGTH = 10000;
 
 // Permission button values
 export const PERMIT_ALLOW = '__permit_allow__';
@@ -83,6 +83,40 @@ export class SmartCardBuilder {
     };
   }
 
+  /**
+   * Split long text into chunks that fit within card element limits.
+   * Splits at paragraph boundaries (double newline) when possible.
+   */
+  private splitContent(text: string, maxLength: number): string[] {
+    if (text.length <= maxLength) return [text];
+
+    const chunks: string[] = [];
+    let remaining = text;
+
+    while (remaining.length > 0) {
+      if (remaining.length <= maxLength) {
+        chunks.push(remaining);
+        break;
+      }
+
+      // Try to split at a paragraph boundary
+      let splitIdx = remaining.lastIndexOf('\n\n', maxLength);
+      if (splitIdx < maxLength * 0.3) {
+        // No good paragraph break, try single newline
+        splitIdx = remaining.lastIndexOf('\n', maxLength);
+      }
+      if (splitIdx < maxLength * 0.3) {
+        // No good newline break, hard split
+        splitIdx = maxLength;
+      }
+
+      chunks.push(remaining.slice(0, splitIdx));
+      remaining = remaining.slice(splitIdx).replace(/^\n+/, '');
+    }
+
+    return chunks;
+  }
+
   buildInitCard(sessionId: string, model: string): FeishuCardV2 {
     return this.card('Claude Session Started', 'blue', [
       { tag: 'markdown', content: `**Session:** \`${sessionId}\`\n**Model:** ${model}` },
@@ -90,9 +124,11 @@ export class SmartCardBuilder {
   }
 
   buildTextCard(text: string, footer?: { model?: string; cwd?: string; context?: string; status?: string; costUsd?: number }): FeishuCardV2 {
-    const truncated = text.length > MAX_CARD_CONTENT_LENGTH
-      ? text.slice(0, MAX_CARD_CONTENT_LENGTH) + '\n\n... (truncated)'
-      : text;
+    const chunks = this.splitContent(text, MAX_CARD_CONTENT_LENGTH);
+    const elements: FeishuCardElement[] = chunks.map(chunk => ({
+      tag: 'markdown' as const,
+      content: chunk,
+    }));
 
     // Dynamic title based on status
     const statusMap: Record<string, string> = {
@@ -111,9 +147,6 @@ export class SmartCardBuilder {
     };
     const title = footer?.status ? (statusMap[footer.status] || `Claude (${footer.status}...)`) : 'Claude';
 
-    const elements: FeishuCardElement[] = [
-      { tag: 'markdown', content: truncated },
-    ];
     const footerParts: string[] = [];
     if (footer?.model) footerParts.push(footer.model);
     if (footer?.cwd) footerParts.push(footer.cwd);
@@ -149,13 +182,13 @@ export class SmartCardBuilder {
   }
 
   buildToolResultCard(toolName: string, output: string, durationSec: number): FeishuCardV2 {
-    const truncated = output.length > MAX_CARD_CONTENT_LENGTH
-      ? output.slice(0, MAX_CARD_CONTENT_LENGTH) + '\n... (truncated)'
-      : output;
-    return this.card(`Tool: ${toolName}`, 'turquoise', [
-      { tag: 'markdown', content: `\`\`\`\n${truncated}\n\`\`\`` },
-      { tag: 'note', elements: [{ tag: 'plain_text', content: `Done - ${durationSec.toFixed(1)}s` }] },
-    ]);
+    const chunks = this.splitContent(output, MAX_CARD_CONTENT_LENGTH);
+    const elements: FeishuCardElement[] = chunks.map(chunk => ({
+      tag: 'markdown' as const,
+      content: `\`\`\`\n${chunk}\n\`\`\``,
+    }));
+    elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: `Done - ${durationSec.toFixed(1)}s` }] });
+    return this.card(`Tool: ${toolName}`, 'turquoise', elements);
   }
 
   buildPermissionCard(toolName: string, description: string): FeishuCardV2 {
@@ -185,13 +218,12 @@ export class SmartCardBuilder {
   }
 
   buildTerminalOutputCard(output: string, opts?: { command?: string; sessionId?: number; cwd?: string }): FeishuCardV2 {
-    const truncated = output.length > MAX_CARD_CONTENT_LENGTH
-      ? output.slice(0, MAX_CARD_CONTENT_LENGTH) + '\n... (truncated)'
-      : output;
+    const chunks = this.splitContent(output, MAX_CARD_CONTENT_LENGTH);
     const title = opts?.command ? `$ ${opts.command}` : 'Terminal';
-    const elements: FeishuCardElement[] = [
-      { tag: 'markdown', content: `\`\`\`\n${truncated}\n\`\`\`` },
-    ];
+    const elements: FeishuCardElement[] = chunks.map(chunk => ({
+      tag: 'markdown' as const,
+      content: `\`\`\`\n${chunk}\n\`\`\``,
+    }));
     const footerParts: string[] = [];
     if (opts?.sessionId !== undefined) footerParts.push(`Session #${opts.sessionId}`);
     if (opts?.cwd) footerParts.push(opts.cwd);

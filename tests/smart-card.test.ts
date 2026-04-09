@@ -16,6 +16,21 @@ describe('SmartCardBuilder', () => {
       expect(mdEl).toBeDefined();
       expect(mdEl.content).toBe('Hello world');
     });
+
+    it('splits long text into multiple markdown elements', () => {
+      // Build a string with paragraph breaks that exceeds the limit
+      const paragraph = 'Lorem ipsum dolor sit amet.\n\n';
+      const longText = paragraph.repeat(500); // ~14000 chars
+      const card = builder.buildTextCard(longText);
+      const json = JSON.stringify(card);
+      const parsed = JSON.parse(json);
+
+      const mdElements = parsed.elements.filter((e: any) => e.tag === 'markdown');
+      expect(mdElements.length).toBeGreaterThan(1);
+      // All original content should be preserved across chunks
+      const allContent = mdElements.map((e: any) => e.content).join('\n\n');
+      expect(allContent).toContain('Lorem ipsum');
+    });
   });
 
   describe('buildToolCallCard', () => {
@@ -50,15 +65,33 @@ describe('SmartCardBuilder', () => {
       expect(hasOutput).toBe(true);
     });
 
-    it('truncates long output and adds note', () => {
-      const longOutput = 'x'.repeat(3000);
+    it('splits long output into multiple markdown elements', () => {
+      const longOutput = 'x'.repeat(15000);
       const card = builder.buildToolResultCard('Bash', longOutput, 2.0);
       const json = JSON.stringify(card);
       const parsed = JSON.parse(json);
 
       const mdElements = parsed.elements.filter((e: any) => e.tag === 'markdown');
-      const allContent = mdElements.map((e: any) => e.content).join('');
-      expect(allContent.length).toBeLessThan(3000);
+      // Should split into multiple markdown elements (15000 / 10000 = 2 chunks)
+      expect(mdElements.length).toBeGreaterThan(1);
+      // Each element should be wrapped in code fences
+      for (const el of mdElements) {
+        expect(el.content).toMatch(/^```\n/);
+        expect(el.content).toMatch(/\n```$/);
+      }
+      // All content should be preserved (no truncation)
+      const allInner = mdElements.map((e: any) => e.content.replace(/^```\n/, '').replace(/\n```$/, '')).join('');
+      expect(allInner.length).toBe(15000);
+    });
+
+    it('does not split short output', () => {
+      const shortOutput = 'x'.repeat(5000);
+      const card = builder.buildToolResultCard('Bash', shortOutput, 1.0);
+      const json = JSON.stringify(card);
+      const parsed = JSON.parse(json);
+
+      const mdElements = parsed.elements.filter((e: any) => e.tag === 'markdown');
+      expect(mdElements.length).toBe(1);
     });
   });
 
