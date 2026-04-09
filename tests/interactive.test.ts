@@ -4,6 +4,7 @@ import {
   SHORTCUT_COMMANDS,
   getShortcutKey,
 } from '../src/terminal/interactive';
+import { handleScreen } from '../src/handlers/terminal';
 
 describe('interactive', () => {
   describe('isInteractiveProgram', () => {
@@ -82,6 +83,12 @@ describe('interactive', () => {
     it('should return undefined for non-shortcut commands', () => {
       expect(getShortcutKey('sh')).toBeUndefined();
       expect(getShortcutKey('help')).toBeUndefined();
+    });
+  });
+
+  describe('handleScreen', () => {
+    it('should be exported as a function', () => {
+      expect(typeof handleScreen).toBe('function');
     });
   });
 });

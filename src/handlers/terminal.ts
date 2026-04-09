@@ -182,6 +182,31 @@ export async function handleShortcutKey(conversationId: string, tmuxKey: string)
   }, getConfig().timing.rawModeCaptureDelay);
 }
 
+export async function handleScreen(conversationId: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+  const activeSessionId = activeSessions.get(conversationId);
+  if (activeSessionId === undefined) {
+    await feishuBot.sendText(conversationId, 'No active session');
+    return;
+  }
+
+  const sessionManager = getSessionManager();
+  const session = sessionManager.getSession(activeSessionId);
+  if (session?.type !== 'terminal' || !session.tmuxName) {
+    await feishuBot.sendText(conversationId, '!screen only works in Terminal mode');
+    return;
+  }
+
+  try {
+    const captured = await tmux.capturePane(session.tmuxName);
+    const card = smartCard.buildTerminalOutputCard(captured, { sessionId: activeSessionId });
+    await feishuBot.sendCard(conversationId, card);
+  } catch (err) {
+    console.error('[TERMINAL] Failed to capture screen:', err);
+    await feishuBot.sendText(conversationId, 'Failed to capture screen');
+  }
+}
+
 export async function handleRawMode(conversationId: string, arg?: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const activeSessionId = activeSessions.get(conversationId);

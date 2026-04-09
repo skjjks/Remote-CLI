@@ -288,6 +288,7 @@ export class SmartCardBuilder {
       '| `!esc` / `!enter` / `!tab` | Send special key |',
       '| `!up` / `!down` / `!left` / `!right` | Arrow keys |',
       '| `!ctrl+c` / `!ctrl+d` / `!ctrl+z` | Ctrl combos |',
+      '| `!screen` / `!sc` | Show current terminal screen |',
       '| `!raw` | Force raw input mode (no Enter appended) |',
       '| `!raw off` | Resume auto-detection |',
       '',
