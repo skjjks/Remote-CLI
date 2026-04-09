@@ -1,4 +1,5 @@
 import { spawn, SpawnOptions } from 'child_process';
+import { getConfig } from '../config';
 
 /**
  * Execute a tmux command and return the result
@@ -65,7 +66,7 @@ export async function createSession(
   });
 
   // Set large scrollback buffer so capture-pane -S - gets full history
-  await executeTmux(['set-option', '-t', name, 'history-limit', '50000']);
+  await executeTmux(['set-option', '-t', name, 'history-limit', String(getConfig().terminal.historyLimit)]);
 }
 
 /**

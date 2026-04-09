@@ -16,9 +16,17 @@ vi.mock('../src/config', () => ({
     feishu: { appId: 'test', appSecret: 'test' },
     security: { allowedUsers: [] },
     server: { port: 3000, host: '0.0.0.0' },
-    terminal: { cols: 80, rows: 24, shell: '/bin/bash' },
+    terminal: { cols: 80, rows: 24, shell: '/bin/bash', historyLimit: 50000 },
     session: { prefix: 'test', dataDir: '/tmp/test' },
     claude: { timeout: 300000, defaultMode: 'default', cardUpdateInterval: 500 },
+    timing: {
+      shellCaptureDelay: 1500,
+      rawModeCaptureDelay: 400,
+      claudeStartupWait: 3000,
+      claudePollInterval: 1000,
+      claudeFirstPollDelay: 1500,
+      claudeMenuPollDelay: 1000,
+    },
   }),
 }));
 

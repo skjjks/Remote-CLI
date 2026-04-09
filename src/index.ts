@@ -142,7 +142,8 @@ async function handleCommand(
       }
 
       // Capture screen feedback
-      const delay = useRawMode ? 400 : 1500;
+      const cfg = getConfig();
+      const delay = useRawMode ? cfg.timing.rawModeCaptureDelay : cfg.timing.shellCaptureDelay;
       setTimeout(async () => {
         try {
           const captured = await tmux.capturePane(tmuxName);

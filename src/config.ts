@@ -20,6 +20,7 @@ export interface Config {
     cols: number;
     rows: number;
     shell: string;
+    historyLimit: number;
   };
   session: {
     prefix: string;
@@ -29,6 +30,14 @@ export interface Config {
     timeout: number;
     defaultMode: 'default' | 'auto';
     cardUpdateInterval: number;
+  };
+  timing: {
+    shellCaptureDelay: number;
+    rawModeCaptureDelay: number;
+    claudeStartupWait: number;
+    claudePollInterval: number;
+    claudeFirstPollDelay: number;
+    claudeMenuPollDelay: number;
   };
 }
 
@@ -77,6 +86,7 @@ export function loadConfig(): Config {
       cols: getEnvVarInt('TERMINAL_COLS', 80),
       rows: getEnvVarInt('TERMINAL_ROWS', 24),
       shell: getEnvVar('SHELL', '/bin/bash'),
+      historyLimit: getEnvVarInt('TERMINAL_HISTORY_LIMIT', 50000),
     },
     session: {
       prefix: getEnvVar('SESSION_PREFIX', 'remote-cli'),
@@ -86,6 +96,14 @@ export function loadConfig(): Config {
       timeout: getEnvVarInt('CLAUDE_TIMEOUT', 300000),
       defaultMode: (getEnvVar('CLAUDE_DEFAULT_MODE', 'default') as 'default' | 'auto'),
       cardUpdateInterval: getEnvVarInt('CLAUDE_CARD_UPDATE_INTERVAL', 500),
+    },
+    timing: {
+      shellCaptureDelay: getEnvVarInt('TIMING_SHELL_CAPTURE_DELAY', 1500),
+      rawModeCaptureDelay: getEnvVarInt('TIMING_RAW_CAPTURE_DELAY', 400),
+      claudeStartupWait: getEnvVarInt('TIMING_CLAUDE_STARTUP_WAIT', 3000),
+      claudePollInterval: getEnvVarInt('TIMING_CLAUDE_POLL_INTERVAL', 1000),
+      claudeFirstPollDelay: getEnvVarInt('TIMING_CLAUDE_FIRST_POLL_DELAY', 1500),
+      claudeMenuPollDelay: getEnvVarInt('TIMING_CLAUDE_MENU_POLL_DELAY', 1000),
     },
   };
 }

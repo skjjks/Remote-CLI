@@ -85,7 +85,7 @@ export class ClaudeManager {
     }
 
     // Wait for claude to start
-    await new Promise(resolve => setTimeout(resolve, 3000));
+    await new Promise(resolve => setTimeout(resolve, this.config.timing.claudeStartupWait));
 
     const session: ClaudeSession = {
       tmuxName,
@@ -140,7 +140,7 @@ export class ClaudeManager {
     session: ClaudeSession,
     beforeContent: string
   ): void {
-    const POLL_INTERVAL = 1000;  // 1 second between PATCH updates
+    const POLL_INTERVAL = this.config.timing.claudePollInterval;
     const timeout = this.config.claude.timeout;
     const startTime = Date.now();
     let lastRawContent = beforeContent;
@@ -215,7 +215,7 @@ export class ClaudeManager {
     };
 
     // Start polling after brief delay
-    session.pollTimeoutId = setTimeout(poll, 1500);
+    session.pollTimeoutId = setTimeout(poll, this.config.timing.claudeFirstPollDelay);
   }
 
   /**
@@ -527,7 +527,7 @@ export class ClaudeManager {
       // Poll for response
       session.pollTimeoutId = setTimeout(() => {
         this.pollForResponse(conversationId, session, beforeContent);
-      }, 1000);
+      }, this.config.timing.claudeMenuPollDelay);
       return;
     }
 
@@ -554,7 +554,7 @@ export class ClaudeManager {
     // Poll for response after selection
     session.pollTimeoutId = setTimeout(() => {
       this.pollForResponse(conversationId, session, beforeContent);
-    }, 1000);
+    }, this.config.timing.claudeMenuPollDelay);
   }
 
   /**
@@ -569,7 +569,7 @@ export class ClaudeManager {
 
     session.pollTimeoutId = setTimeout(() => {
       this.pollForResponse(conversationId, session, beforeContent);
-    }, 1000);
+    }, this.config.timing.claudeMenuPollDelay);
   }
 
   /**

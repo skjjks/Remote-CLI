@@ -1,4 +1,5 @@
 import { getFeishuBot } from '../bot/feishu';
+import { getConfig } from '../config';
 import { getSessionManager, SessionInfo } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
 import { activeSessions, pendingPrompts, smartCard } from '../state';
@@ -111,7 +112,7 @@ export async function handleShellCommand(conversationId: string, command: string
     } catch (err) {
       console.error('Failed to capture pane:', err);
     }
-  }, 1500);
+  }, getConfig().timing.shellCaptureDelay);
 }
 
 export async function handleSpecialKey(conversationId: string, key?: string): Promise<void> {
@@ -177,7 +178,7 @@ export async function handleShortcutKey(conversationId: string, tmuxKey: string)
     } catch (err) {
       console.error('Failed to capture pane after shortcut:', err);
     }
-  }, 400);
+  }, getConfig().timing.rawModeCaptureDelay);
 }
 
 export async function handleRawMode(conversationId: string, arg?: string): Promise<void> {
