@@ -339,8 +339,8 @@ export class PtyManager {
     // Kill the tmux session
     try {
       await tmux.killSession(session.tmuxName);
-    } catch {
-      // Ignore errors
+    } catch (err) {
+      console.warn('[PTY] Failed to kill tmux session:', err instanceof Error ? err.message : err);
     }
 
     this.sessions.delete(sessionId);

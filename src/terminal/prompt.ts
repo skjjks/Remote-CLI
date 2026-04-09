@@ -98,8 +98,9 @@ export class JsonStreamParser {
                   this.buffer = this.buffer.substring(i + 1);
                   this.jsonStartIndex = -1;
                   return parsed;
-                } catch {
+                } catch (err) {
                   // Invalid JSON, reset and continue
+                  console.warn('[PROMPT] Failed to parse JSON chunk:', err instanceof Error ? err.message : err);
                   this.jsonStartIndex = -1;
                   this.braceDepth = 0;
                   return null;
@@ -143,8 +144,9 @@ export class JsonStreamParser {
                 this.buffer = this.buffer.substring(i + 1);
                 this.jsonStartIndex = -1;
                 return parsed;
-              } catch {
+              } catch (err) {
                 // Invalid JSON, reset and continue
+                console.warn('[PROMPT] Failed to parse JSON chunk:', err instanceof Error ? err.message : err);
                 this.jsonStartIndex = -1;
                 this.braceDepth = 0;
                 return null;

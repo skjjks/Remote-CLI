@@ -238,8 +238,8 @@ export class FeishuBot {
       await this.client.im.messageReaction.delete({
         path: { message_id: messageId, reaction_id: reactionId },
       });
-    } catch {
-      // Non-critical
+    } catch (err) {
+      console.warn('[FEISHU] Failed to remove reaction:', err instanceof Error ? err.message : err);
     }
   }
 

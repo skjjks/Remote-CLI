@@ -27,9 +27,9 @@ export class ClaudeStreamParser {
       try {
         const parsed = JSON.parse(trimmed) as ClaudeBaseEvent;
         events.push(parsed);
-      } catch {
+      } catch (err) {
         // Malformed JSON — log and skip
-        console.warn('[ClaudeStreamParser] Skipping malformed line:', trimmed.slice(0, 120));
+        console.warn('[ClaudeStreamParser] Skipping malformed line:', trimmed.slice(0, 120), err instanceof Error ? err.message : err);
       }
     }
 

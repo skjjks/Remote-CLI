@@ -60,8 +60,9 @@ export class SessionManager {
       try {
         const content = fs.readFileSync(this.sessionsFile, 'utf-8');
         return JSON.parse(content);
-      } catch {
+      } catch (err) {
         // Corrupted file, start fresh
+        console.warn('[SESSION] Failed to load sessions file:', err instanceof Error ? err.message : err);
       }
     }
 
@@ -237,8 +238,9 @@ export class SessionManager {
     if (session.type === 'terminal' && session.tmuxName) {
       try {
         await tmux.killSession(session.tmuxName);
-      } catch {
-        // Session might not exist in tmux, ignore error
+      } catch (err) {
+        // Session might not exist in tmux
+        console.warn('[SESSION] Failed to kill tmux session:', err instanceof Error ? err.message : err);
       }
     }
 
@@ -315,8 +317,8 @@ export class SessionManager {
       if (session.type === 'terminal' && session.tmuxName) {
         try {
           await tmux.killSession(session.tmuxName);
-        } catch {
-          // Ignore errors
+        } catch (err) {
+          console.warn('[SESSION] Failed to kill tmux session during cleanup:', err instanceof Error ? err.message : err);
         }
       }
     }

@@ -8,7 +8,8 @@ import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './sta
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, extractCommandOutput } from './handlers/terminal';
 import { handleClaudeCommand, handleCd, getClaudeManager } from './handlers/claude';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch } from './handlers/session';
-import { handleCardAction } from './handlers/card-action';
+// Note: handleCardAction is in ./handlers/card-action.ts but unused in WebSocket mode
+// (card button callbacks require HTTP webhook mode)
 
 // ── Command handling ──
 
@@ -129,7 +130,8 @@ async function handleCommand(
         try {
           const currentCmd = await tmux.getCurrentCommand(tmuxName);
           useRawMode = isInteractiveProgram(currentCmd);
-        } catch {
+        } catch (err) {
+          console.warn('[TMUX] Failed to detect current command:', err instanceof Error ? err.message : err);
           useRawMode = false;
         }
       }
@@ -186,7 +188,7 @@ async function main(): Promise<void> {
       } else {
         // tmux session gone, clean up
         console.log(`[INIT] Claude session ${session.id} (${session.tmuxName}) no longer exists, removing`);
-        await sessionManager.killSession(session.id).catch(() => {});
+        await sessionManager.killSession(session.id).catch(err => console.warn('[INIT] Failed to kill stale session:', err.message || err));
       }
     }
   }
@@ -209,7 +211,7 @@ async function main(): Promise<void> {
             await handleCommand(message.conversationId, message.senderId, message.content);
           } finally {
             if (reactionId) {
-              feishuBot.removeReaction(message.messageId, reactionId).catch(() => {});
+              feishuBot.removeReaction(message.messageId, reactionId).catch(err => console.warn('[FEISHU] Failed to remove reaction:', err.message || err));
             }
           }
         };

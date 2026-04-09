@@ -123,7 +123,8 @@ export async function sessionExists(name: string): Promise<boolean> {
   try {
     await executeTmux(args);
     return true;
-  } catch {
+  } catch (err) {
+    console.warn('[TMUX] has-session check failed for', name + ':', err instanceof Error ? err.message : err);
     return false;
   }
 }

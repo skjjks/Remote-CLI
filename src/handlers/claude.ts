@@ -15,13 +15,13 @@ const claudeCallbacks: ClaudeManagerCallbacks = {
   onStreamUpdate: (conversationId, messageId, content, metadata) => {
     const feishuBot = getFeishuBot();
     const card = smartCard.buildTextCard(content, metadata);
-    feishuBot.updateCard(messageId, card).catch(() => {});
+    feishuBot.updateCard(messageId, card).catch(err => console.warn('[CARD] Failed to update card on stream update:', err.message || err));
   },
 
   onStreamEnd: (conversationId, messageId, content, metadata) => {
     const feishuBot = getFeishuBot();
     const card = smartCard.buildTextCard(content, metadata);
-    feishuBot.updateCard(messageId, card).catch(() => {});
+    feishuBot.updateCard(messageId, card).catch(err => console.warn('[CARD] Failed to update card on stream end:', err.message || err));
   },
 
   onMenu: async (conversationId, menu) => {
@@ -77,14 +77,14 @@ export async function handleClaudeCommand(conversationId: string, prompt: string
     sessionManager.updateClaudeSessionId(session.id, tmuxName);
 
     // Non-blocking: start session in background, send message when ready
-    feishuBot.sendText(conversationId, 'Starting Claude session...').catch(() => {});
+    feishuBot.sendText(conversationId, 'Starting Claude session...').catch(err => console.warn('[FEISHU] Failed to send start notification:', err.message || err));
     claudeManager.startSession(conversationId, tmuxName).then(() => {
       claudeManager.sendMessage(conversationId, prompt).catch(err => {
         console.error('Failed to send message to Claude:', err);
       });
     }).catch(err => {
       console.error('Failed to start Claude session:', err);
-      feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(() => {});
+      feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(err2 => console.warn('[FEISHU] Failed to send error card:', err2.message || err2));
     });
     return;
   }
@@ -94,7 +94,7 @@ export async function handleClaudeCommand(conversationId: string, prompt: string
   console.log(`[CLAUDE] session alive=${alive}, prompt="${prompt.slice(0, 20)}"`);
   if (!alive) {
     const tmuxName = `claude-${session.id}-${Date.now()}`;
-    feishuBot.sendText(conversationId, 'Restarting Claude session...').catch(() => {});
+    feishuBot.sendText(conversationId, 'Restarting Claude session...').catch(err => console.warn('[FEISHU] Failed to send restart notification:', err.message || err));
     claudeManager.startSession(conversationId, tmuxName).then(() => {
       claudeManager.sendMessage(conversationId, prompt).catch(err => {
         console.error('Failed to send message to Claude:', err);
@@ -148,9 +148,9 @@ export async function handleCd(conversationId: string, dir: string): Promise<voi
   session.tmuxName = tmuxName;
   sessionManager.updateClaudeSessionId(session.id, tmuxName);
 
-  feishuBot.sendText(conversationId, `Switching to ${dir} ...`).catch(() => {});
+  feishuBot.sendText(conversationId, `Switching to ${dir} ...`).catch(err => console.warn('[FEISHU] Failed to send cd notification:', err.message || err));
   claudeManager.startSession(conversationId, tmuxName, dir).catch(err => {
     console.error('Failed to start Claude in dir:', err);
-    feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(() => {});
+    feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(err2 => console.warn('[FEISHU] Failed to send cd error card:', err2.message || err2));
   });
 }

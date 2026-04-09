@@ -95,7 +95,8 @@ export class ClaudeManager {
     // Capture initial screen content so we can diff later
     try {
       session.lastCaptureContent = await tmux.capturePane(tmuxName);
-    } catch {
+    } catch (err) {
+      console.warn('[CLAUDE] Failed to capture initial pane content:', err instanceof Error ? err.message : err);
       session.lastCaptureContent = '';
     }
 
@@ -116,7 +117,8 @@ export class ClaudeManager {
     let beforeContent = '';
     try {
       beforeContent = await tmux.capturePane(session.tmuxName);
-    } catch {
+    } catch (err) {
+      console.warn('[CLAUDE] Failed to capture pane before send:', err instanceof Error ? err.message : err);
       beforeContent = '';
     }
 
@@ -599,7 +601,7 @@ export class ClaudeManager {
     if (session) {
       try {
         await tmux.killSession(session.tmuxName);
-      } catch { /* ignore */ }
+      } catch (err) { console.warn('[CLAUDE] Failed to kill tmux session:', err instanceof Error ? err.message : err); }
       this.sessions.delete(conversationId);
     }
   }
@@ -620,7 +622,8 @@ export class ClaudeManager {
 
     try {
       session.lastCaptureContent = await tmux.capturePane(tmuxName);
-    } catch {
+    } catch (err) {
+      console.warn('[CLAUDE] Failed to capture pane on reconnect:', err instanceof Error ? err.message : err);
       session.lastCaptureContent = '';
     }
 

@@ -92,7 +92,7 @@ export async function handleKillSession(conversationId: string, idStr?: string):
 
   // Kill the appropriate process
   if (session.type === 'terminal' && session.tmuxName) {
-    try { await tmux.killSession(session.tmuxName); } catch { /* ignore */ }
+    try { await tmux.killSession(session.tmuxName); } catch (err) { console.warn('[SESSION] Failed to kill tmux session:', err instanceof Error ? err.message : err); }
   } else if (session.type === 'claude') {
     const claudeManager = getClaudeManager();
     await claudeManager.killSession(conversationId);
