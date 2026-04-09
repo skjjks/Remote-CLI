@@ -13,6 +13,7 @@ import {
 } from './bot/card';
 import { getSessionManager, SessionInfo } from './terminal/session';
 import * as tmux from './terminal/tmux';
+import { isInteractiveProgram, getShortcutKey } from './terminal/interactive';
 import { ClaudeManager, ClaudeManagerCallbacks } from './claude/manager';
 
 // ── State ──
@@ -195,15 +196,25 @@ async function handleCommand(
       case 'key':
         await handleSpecialKey(conversationId, args.join(' '));
         return;
+      case 'raw':
+        await handleRawMode(conversationId, args[0]);
+        return;
       case 'cd':
         await handleCd(conversationId, args.join(' '));
         return;
       case 'whoami':
         await feishuBot.sendText(conversationId, `Your User ID: ${senderId}`);
         return;
-      default:
+      default: {
+        // Check if this is a shortcut command (e.g., !esc, !enter, !tab)
+        const shortcutKey = getShortcutKey(command);
+        if (shortcutKey) {
+          await handleShortcutKey(conversationId, shortcutKey);
+          return;
+        }
         await feishuBot.sendText(conversationId, `Unknown command: ${command}\nType !help to see all commands`);
         return;
+      }
     }
   }
 
@@ -236,22 +247,45 @@ async function handleCommand(
       // Route through handleClaudeCommand which handles reconnection
       handleClaudeCommand(conversationId, trimmedMessage);
     } else if (session?.type === 'terminal' && session.tmuxName) {
-      // Send via tmux + capture
       const cmd = trimmedMessage;
       const sid = activeSessionId;
       const tmuxName = session.tmuxName;
+
+      // Determine if raw mode is active
+      let useRawMode = session.rawMode === true;
+      if (session.rawMode === undefined) {
+        try {
+          const currentCmd = await tmux.getCurrentCommand(tmuxName);
+          useRawMode = isInteractiveProgram(currentCmd);
+        } catch {
+          useRawMode = false;
+        }
+      }
+
       await tmux.sendKeys(tmuxName, cmd);
-      await tmux.sendKeys(tmuxName, 'Enter');
+      if (!useRawMode) {
+        await tmux.sendKeys(tmuxName, 'Enter');
+      }
+
+      // Capture screen feedback
+      const delay = useRawMode ? 400 : 1500;
       setTimeout(async () => {
         try {
           const captured = await tmux.capturePane(tmuxName);
-          const { output, cwd } = extractCommandOutput(captured, cmd);
-          const card = smartCard.buildTerminalOutputCard(output, { command: cmd, sessionId: sid, cwd });
-          await feishuBot.sendCard(conversationId, card);
+          if (useRawMode) {
+            // Raw mode: show full screen capture
+            const card = smartCard.buildTerminalOutputCard(captured, { sessionId: sid });
+            await feishuBot.sendCard(conversationId, card);
+          } else {
+            // Normal mode: extract command output
+            const { output, cwd } = extractCommandOutput(captured, cmd);
+            const card = smartCard.buildTerminalOutputCard(output, { command: cmd, sessionId: sid, cwd });
+            await feishuBot.sendCard(conversationId, card);
+          }
         } catch (err) {
           console.error('Failed to capture pane:', err);
         }
-      }, 1500);
+      }, delay);
     }
   } else {
     // No active session — create Claude session by default
@@ -585,6 +619,61 @@ async function handleSpecialKey(conversationId: string, key?: string): Promise<v
   };
   const tmuxKey = keyMap[key.toLowerCase()] || key;
   await tmux.sendKeys(session.tmuxName!, tmuxKey);
+}
+
+async function handleShortcutKey(conversationId: string, tmuxKey: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+  const activeSessionId = activeSessions.get(conversationId);
+  if (activeSessionId === undefined) {
+    await feishuBot.sendText(conversationId, 'No active session');
+    return;
+  }
+
+  const sessionManager = getSessionManager();
+  const session = sessionManager.getSession(activeSessionId);
+  if (session?.type !== 'terminal' || !session.tmuxName) {
+    await feishuBot.sendText(conversationId, 'Shortcut keys only work in Terminal mode');
+    return;
+  }
+
+  await tmux.sendKeys(session.tmuxName, tmuxKey);
+
+  // Capture and send screen feedback
+  const tmuxName = session.tmuxName;
+  const sid = activeSessionId;
+  setTimeout(async () => {
+    try {
+      const captured = await tmux.capturePane(tmuxName);
+      const card = smartCard.buildTerminalOutputCard(captured, { sessionId: sid });
+      await feishuBot.sendCard(conversationId, card);
+    } catch (err) {
+      console.error('Failed to capture pane after shortcut:', err);
+    }
+  }, 400);
+}
+
+async function handleRawMode(conversationId: string, arg?: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+  const activeSessionId = activeSessions.get(conversationId);
+  if (activeSessionId === undefined) {
+    await feishuBot.sendText(conversationId, 'No active session');
+    return;
+  }
+
+  const sessionManager = getSessionManager();
+  const session = sessionManager.getSession(activeSessionId);
+  if (session?.type !== 'terminal') {
+    await feishuBot.sendText(conversationId, '!raw only works in Terminal mode');
+    return;
+  }
+
+  if (arg === 'off') {
+    sessionManager.updateRawMode(activeSessionId, undefined);
+    await feishuBot.sendText(conversationId, 'Raw mode off — auto-detection resumed');
+  } else {
+    sessionManager.updateRawMode(activeSessionId, true);
+    await feishuBot.sendText(conversationId, 'Raw mode on — keystrokes sent without Enter');
+  }
 }
 
 // ── Card action handling ──
