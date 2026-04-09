@@ -39,6 +39,7 @@ interface ClaudeSession {
   tmuxName: string;
   conversationId: string;
   lastCaptureContent: string;  // Track content to send only new output
+  pollTimeoutId?: ReturnType<typeof setTimeout>;  // Track active poll for cleanup
 }
 
 export class ClaudeManager {
@@ -149,6 +150,7 @@ export class ClaudeManager {
 
     const poll = async () => {
       if (Date.now() - startTime > timeout) {
+        session.pollTimeoutId = undefined;
         this.callbacks.onError(conversationId, 'Claude response timed out');
         return;
       }
@@ -160,6 +162,7 @@ export class ClaudeManager {
         const menu = this.detectMenu(currentContent);
         if (menu) {
           session.lastCaptureContent = currentContent;
+          session.pollTimeoutId = undefined;
           this.callbacks.onMenu(conversationId, menu);
           return;
         }
@@ -190,6 +193,7 @@ export class ClaudeManager {
         // Stable for 3 polls (3 seconds) and we have content → done
         if (stableCount >= 3 && currentContent !== beforeContent) {
           session.lastCaptureContent = currentContent;
+          session.pollTimeoutId = undefined;
           const metadata = this.extractMetadata(currentContent);
           if (messageId && cleaned) {
             this.callbacks.onStreamEnd(conversationId, messageId, cleaned, metadata);
@@ -203,14 +207,15 @@ export class ClaudeManager {
           return;
         }
 
-        setTimeout(poll, POLL_INTERVAL);
+        session.pollTimeoutId = setTimeout(poll, POLL_INTERVAL);
       } catch (err) {
+        session.pollTimeoutId = undefined;
         this.callbacks.onError(conversationId, `Capture failed: ${err}`);
       }
     };
 
     // Start polling after brief delay
-    setTimeout(poll, 1500);
+    session.pollTimeoutId = setTimeout(poll, 1500);
   }
 
   /**
@@ -520,7 +525,7 @@ export class ClaudeManager {
       await tmux.sendKeys(session.tmuxName, String(targetIndex));
       await tmux.sendKeys(session.tmuxName, 'Enter');
       // Poll for response
-      setTimeout(() => {
+      session.pollTimeoutId = setTimeout(() => {
         this.pollForResponse(conversationId, session, beforeContent);
       }, 1000);
       return;
@@ -547,7 +552,7 @@ export class ClaudeManager {
     await tmux.sendKeys(session.tmuxName, 'Enter');
 
     // Poll for response after selection
-    setTimeout(() => {
+    session.pollTimeoutId = setTimeout(() => {
       this.pollForResponse(conversationId, session, beforeContent);
     }, 1000);
   }
@@ -562,7 +567,7 @@ export class ClaudeManager {
     const beforeContent = await tmux.capturePane(session.tmuxName);
     await tmux.sendKeys(session.tmuxName, yes ? 'y' : 'n');
 
-    setTimeout(() => {
+    session.pollTimeoutId = setTimeout(() => {
       this.pollForResponse(conversationId, session, beforeContent);
     }, 1000);
   }
@@ -573,6 +578,10 @@ export class ClaudeManager {
   async interruptSession(conversationId: string): Promise<void> {
     const session = this.sessions.get(conversationId);
     if (session) {
+      if (session.pollTimeoutId) {
+        clearTimeout(session.pollTimeoutId);
+        session.pollTimeoutId = undefined;
+      }
       await tmux.sendKeys(session.tmuxName, 'C-c');
     }
   }
@@ -599,6 +608,10 @@ export class ClaudeManager {
   async killSession(conversationId: string): Promise<void> {
     const session = this.sessions.get(conversationId);
     if (session) {
+      if (session.pollTimeoutId) {
+        clearTimeout(session.pollTimeoutId);
+        session.pollTimeoutId = undefined;
+      }
       try {
         await tmux.killSession(session.tmuxName);
       } catch (err) { console.warn('[CLAUDE] Failed to kill tmux session:', err instanceof Error ? err.message : err); }
