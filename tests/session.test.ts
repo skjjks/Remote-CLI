@@ -93,4 +93,63 @@ describe('SessionManager with session types', () => {
       expect(updated?.rawMode).toBeUndefined();
     });
   });
+
+  describe('updateLastActivity', () => {
+    it('should update the lastActivity timestamp', async () => {
+      const session = await manager.createSession('conv-activity');
+      expect(session.lastActivity).toBeUndefined();
+
+      manager.updateLastActivity(session.id);
+      const updated = manager.getSession(session.id);
+      expect(updated?.lastActivity).toBeDefined();
+      // Should be a valid ISO date string
+      expect(new Date(updated!.lastActivity!).getTime()).not.toBeNaN();
+    });
+
+    it('should update timestamp on subsequent calls', async () => {
+      const session = await manager.createSession('conv-activity2');
+
+      manager.updateLastActivity(session.id);
+      const first = manager.getSession(session.id)!.lastActivity!;
+
+      // Small delay to ensure different timestamps
+      await new Promise(resolve => setTimeout(resolve, 10));
+
+      manager.updateLastActivity(session.id);
+      const second = manager.getSession(session.id)!.lastActivity!;
+
+      expect(new Date(second).getTime()).toBeGreaterThanOrEqual(new Date(first).getTime());
+    });
+  });
+
+  describe('cleanupStaleSessions', () => {
+    it('should remove sessions older than maxAge', async () => {
+      const session = await manager.createSession('conv-stale');
+      // Manually set created to 2 days ago
+      const s = manager.getSession(session.id)!;
+      s.created = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+
+      const cleaned = await manager.cleanupStaleSessions(24 * 60 * 60 * 1000);
+      expect(cleaned).toBe(1);
+      expect(manager.getSession(session.id)).toBeUndefined();
+    });
+
+    it('should keep sessions with recent activity', async () => {
+      const session = await manager.createSession('conv-active');
+      // Created 2 days ago but active now
+      const s = manager.getSession(session.id)!;
+      s.created = new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString();
+      manager.updateLastActivity(session.id);
+
+      const cleaned = await manager.cleanupStaleSessions(24 * 60 * 60 * 1000);
+      expect(cleaned).toBe(0);
+      expect(manager.getSession(session.id)).toBeDefined();
+    });
+
+    it('should return 0 when no stale sessions exist', async () => {
+      await manager.createSession('conv-fresh');
+      const cleaned = await manager.cleanupStaleSessions(24 * 60 * 60 * 1000);
+      expect(cleaned).toBe(0);
+    });
+  });
 });

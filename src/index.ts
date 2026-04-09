@@ -247,6 +247,14 @@ async function main(): Promise<void> {
   console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
 
+  // Periodic cleanup of stale sessions (every hour)
+  setInterval(async () => {
+    const cleaned = await sessionManager.cleanupStaleSessions(24 * 60 * 60 * 1000);
+    if (cleaned > 0) {
+      console.log(`[CLEANUP] Removed ${cleaned} stale sessions`);
+    }
+  }, 60 * 60 * 1000);
+
   // Graceful shutdown
   const shutdown = async (signal: string) => {
     console.log(`\n[SHUTDOWN] Received ${signal}, cleaning up...`);

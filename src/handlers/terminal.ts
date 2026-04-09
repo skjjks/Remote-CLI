@@ -92,6 +92,8 @@ export async function handleShellCommand(conversationId: string, command: string
     activeSessions.set(conversationId, session.id);
   }
 
+  sessionManager.updateLastActivity(session.id);
+
   // Send command via tmux send-keys (not PTY stream)
   // Use literal mode for user-provided text to prevent tmux key name interpretation
   await tmux.sendLiteralKeys(session.tmuxName!, command);

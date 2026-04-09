@@ -18,6 +18,7 @@ export interface SessionInfo {
   allowedTools?: string[];
   // Terminal interactive mode
   rawMode?: boolean; // undefined = auto-detect, true = forced raw
+  lastActivity?: string; // ISO timestamp of last activity
 }
 
 /**
@@ -223,6 +224,40 @@ export class SessionManager {
       session.rawMode = rawMode;
       this.saveSessions();
     }
+  }
+
+  /**
+   * Update last activity timestamp for a session
+   */
+  updateLastActivity(sessionId: number): void {
+    const session = this.getSession(sessionId);
+    if (session) {
+      session.lastActivity = new Date().toISOString();
+      this.saveSessions();
+    }
+  }
+
+  /**
+   * Remove sessions inactive for longer than maxAge (ms).
+   * Returns number of sessions cleaned up.
+   */
+  async cleanupStaleSessions(maxAgeMs: number): Promise<number> {
+    const now = Date.now();
+    const stale = this.data.sessions.filter(s => {
+      const lastActive = s.lastActivity ? new Date(s.lastActivity).getTime() : new Date(s.created).getTime();
+      return now - lastActive > maxAgeMs;
+    });
+
+    let cleaned = 0;
+    for (const session of stale) {
+      try {
+        await this.killSession(session.id);
+        cleaned++;
+      } catch {
+        // already gone
+      }
+    }
+    return cleaned;
   }
 
   /**

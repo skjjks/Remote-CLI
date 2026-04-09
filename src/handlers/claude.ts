@@ -89,6 +89,9 @@ export async function handleClaudeCommand(conversationId: string, prompt: string
     return;
   }
 
+  // Update activity timestamp
+  sessionManager.updateLastActivity(session.id);
+
   // Check if tmux session is still alive
   const alive = await claudeManager.isSessionAlive(conversationId);
   console.log(`[CLAUDE] session alive=${alive}, prompt="${prompt.slice(0, 20)}"`);
