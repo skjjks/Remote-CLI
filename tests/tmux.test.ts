@@ -8,6 +8,7 @@ import {
   sessionExists,
   sendKeys,
   capturePane,
+  getCurrentCommand,
 } from '../src/terminal/tmux';
 
 // Mock child_process
@@ -264,6 +265,36 @@ describe('tmux', () => {
       call?.[1](1);
 
       await expect(promise).rejects.toThrow('no session');
+    });
+  });
+
+  describe('getCurrentCommand', () => {
+    it('should execute tmux display-message with correct arguments', async () => {
+      const promise = getCurrentCommand('my-session');
+
+      mockProcess.stdout.on.mock.calls.find((call: unknown[]) => call[0] === 'data')?.[1](Buffer.from('vim'));
+      const call = mockProcess.on.mock.calls.find(call => call[0] === 'close');
+      call?.[1](0);
+
+      const result = await promise;
+
+      expect(spawn).toHaveBeenCalledWith(
+        'tmux',
+        ['display-message', '-p', '-t', 'my-session', '#{pane_current_command}'],
+        expect.any(Object)
+      );
+      expect(result).toBe('vim');
+    });
+
+    it('should return shell name when no program is running', async () => {
+      const promise = getCurrentCommand('my-session');
+
+      mockProcess.stdout.on.mock.calls.find((call: unknown[]) => call[0] === 'data')?.[1](Buffer.from('bash'));
+      const call = mockProcess.on.mock.calls.find(call => call[0] === 'close');
+      call?.[1](0);
+
+      const result = await promise;
+      expect(result).toBe('bash');
     });
   });
 

@@ -139,6 +139,18 @@ export async function sendKeys(name: string, keys: string): Promise<void> {
 }
 
 /**
+ * Get the current foreground command running in a tmux pane
+ * @param name - Session name
+ * @returns The process name (e.g., 'bash', 'vim', 'htop')
+ */
+export async function getCurrentCommand(name: string): Promise<string> {
+  return executeTmux([
+    'display-message', '-p', '-t', name,
+    '#{pane_current_command}'
+  ]);
+}
+
+/**
  * Capture the current pane output from a tmux session
  * @param name - Session name
  * @returns Captured pane content as string
