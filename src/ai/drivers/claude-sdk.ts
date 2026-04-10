@@ -144,7 +144,10 @@ export class ClaudeSDKDriver implements AISessionDriver {
         if (msg.type === 'result') {
           const result = msg as any;
           const metadata: AIMetadata = {
+            backend: 'claude',
             costUsd: result.total_cost_usd,
+            inputTokens: result.usage?.input_tokens,
+            outputTokens: result.usage?.output_tokens,
             status: 'done',
           };
 
@@ -174,6 +177,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
 
   private buildMetadata(_session: ClaudeSession): AIMetadata {
     return {
+      backend: 'claude',
       status: 'working',
     };
   }

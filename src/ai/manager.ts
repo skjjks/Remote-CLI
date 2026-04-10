@@ -13,11 +13,14 @@ export interface DetectedMenu {
 }
 
 export interface AIMetadata {
+  backend?: string;   // 'claude' | 'opencode'
   model?: string;
   cwd?: string;
   context?: string;
   status?: string;
   costUsd?: number;
+  inputTokens?: number;
+  outputTokens?: number;
 }
 
 export interface AIManagerCallbacks {

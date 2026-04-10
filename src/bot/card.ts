@@ -122,39 +122,47 @@ export class SmartCardBuilder {
     ]);
   }
 
-  buildTextCard(text: string, footer?: { model?: string; cwd?: string; context?: string; status?: string; costUsd?: number }): FeishuCardV2 {
+  buildTextCard(text: string, footer?: { backend?: string; model?: string; cwd?: string; context?: string; status?: string; costUsd?: number; inputTokens?: number; outputTokens?: number }): FeishuCardV2 {
     const chunks = this.splitContent(text, MAX_CARD_CONTENT_LENGTH);
     const elements: FeishuCardElement[] = chunks.map(chunk => ({
       tag: 'markdown' as const,
       content: chunk,
     }));
 
+    // Backend name for title
+    const backendName = footer?.backend === 'opencode' ? 'Opencode' : 'Claude';
+    const color = footer?.backend === 'opencode' ? 'green' : 'purple';
+
     // Dynamic title based on status
     const statusMap: Record<string, string> = {
-      thinking: 'Claude (thinking...)',
-      processing: 'Claude (processing...)',
-      done: 'Claude',
-      working: 'Claude (working...)',
-      Bash: 'Claude (running command...)',
-      Edit: 'Claude (editing file...)',
-      Update: 'Claude (editing file...)',
-      Read: 'Claude (reading file...)',
-      Write: 'Claude (writing file...)',
-      Glob: 'Claude (searching files...)',
-      Grep: 'Claude (searching code...)',
-      Agent: 'Claude (running agent...)',
+      thinking: `${backendName} (thinking...)`,
+      processing: `${backendName} (processing...)`,
+      done: backendName,
+      working: `${backendName} (working...)`,
+      Bash: `${backendName} (running command...)`,
+      Edit: `${backendName} (editing file...)`,
+      Update: `${backendName} (editing file...)`,
+      Read: `${backendName} (reading file...)`,
+      Write: `${backendName} (writing file...)`,
+      Glob: `${backendName} (searching files...)`,
+      Grep: `${backendName} (searching code...)`,
+      Agent: `${backendName} (running agent...)`,
     };
-    const title = footer?.status ? (statusMap[footer.status] || `Claude (${footer.status}...)`) : 'Claude';
+    const title = footer?.status ? (statusMap[footer.status] || `${backendName} (${footer.status}...)`) : backendName;
 
     const footerParts: string[] = [];
     if (footer?.model) footerParts.push(footer.model);
     if (footer?.cwd) footerParts.push(footer.cwd);
     if (footer?.context) footerParts.push(`Context ${footer.context}`);
-    if (footer?.costUsd) footerParts.push(`$${footer.costUsd.toFixed(2)}`);
+    if (footer?.inputTokens || footer?.outputTokens) {
+      const tokensStr = `${(footer.inputTokens || 0).toLocaleString()} in / ${(footer.outputTokens || 0).toLocaleString()} out`;
+      footerParts.push(tokensStr);
+    }
+    if (footer?.costUsd) footerParts.push(`$${footer.costUsd.toFixed(4)}`);
     if (footerParts.length > 0) {
       elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: footerParts.join('  ·  ') }] });
     }
-    return this.card(title, 'purple', elements);
+    return this.card(title, color, elements);
   }
 
   buildToolCallCard(toolName: string, input: Record<string, unknown>): FeishuCardV2 {

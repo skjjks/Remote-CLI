@@ -189,7 +189,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
         session.conversationId,
         session.messageId,
         session.accumulatedText,
-        { status: 'working' },
+        { backend: 'opencode', status: 'working' },
       );
     }
   }
@@ -202,7 +202,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     if (status.type === 'idle') {
       // Session finished processing
       if (session.accumulatedText && session.messageId) {
-        const metadata: AIMetadata = { status: 'done' };
+        const metadata: AIMetadata = { backend: 'opencode', status: 'done' };
         this.callbacks.onStreamEnd(
           session.conversationId,
           session.messageId,
