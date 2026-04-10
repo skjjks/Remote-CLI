@@ -84,9 +84,17 @@ export class ClaudeSDKDriver implements AISessionDriver {
             timer,
           });
 
+          // Auto-allow safe tools that handle their own interaction
+          if (toolName === 'AskUserQuestion') {
+            resolve({ behavior: 'allow' });
+            clearTimeout(timer);
+            pendingRequests.delete(requestId);
+            return;
+          }
+
           // Build description of what the tool wants to do
           let description = '';
-          let menuTitle = `${options.title || toolName} wants permission`;
+          const menuTitle = `${options.title || toolName} wants permission`;
 
           if (toolName === 'Bash' && input.command) {
             description = `\`\`\`\n${String(input.command).slice(0, 500)}\n\`\`\``;
@@ -94,20 +102,6 @@ export class ClaudeSDKDriver implements AISessionDriver {
             description = `File: \`${input.file_path}\``;
           } else if ((toolName === 'Read' || toolName === 'Write') && input.file_path) {
             description = `File: \`${input.file_path}\``;
-          } else if (toolName === 'AskUserQuestion' && input.questions) {
-            // Format AskUserQuestion with full question text and options
-            const questions = input.questions as Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }> }>;
-            const parts: string[] = [];
-            for (const q of questions) {
-              parts.push(`**${q.header || 'Question'}**: ${q.question}`);
-              if (q.options) {
-                for (const opt of q.options) {
-                  parts.push(`  - ${opt.label}${opt.description ? `: ${opt.description}` : ''}`);
-                }
-              }
-            }
-            description = parts.join('\n');
-            menuTitle = 'Claude wants to ask you a question';
           } else {
             description = JSON.stringify(input, null, 2).slice(0, 500);
           }
