@@ -96,6 +96,7 @@ export async function handleShellCommand(conversationId: string, command: string
 
   // Send command via tmux send-keys (not PTY stream)
   // Use literal mode for user-provided text to prevent tmux key name interpretation
+  const startTime = Date.now();
   await tmux.sendLiteralKeys(session.tmuxName!, command);
   await tmux.sendKeys(session.tmuxName!, 'Enter');
 
@@ -106,10 +107,12 @@ export async function handleShellCommand(conversationId: string, command: string
     try {
       const captured = await tmux.capturePane(tmuxName);
       const { output, cwd } = extractCommandOutput(captured, command);
+      const durationMs = Date.now() - startTime;
       const card = smartCard.buildTerminalOutputCard(output, {
         command,
         sessionId,
         cwd,
+        durationMs,
       });
       await feishuBot.sendCard(conversationId, card);
     } catch (err) {

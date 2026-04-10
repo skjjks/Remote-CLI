@@ -345,20 +345,32 @@ export class SmartCardBuilder {
 
   buildTerminalOutputCard(output: string, opts?: { command?: string; sessionId?: number; cwd?: string; durationMs?: number }): FeishuCardV2 {
     const cleaned = this.stripAnsi(output);
-    const chunks = this.splitContent(cleaned, MAX_CARD_CONTENT_LENGTH);
     const title = opts?.command ? `$ ${opts.command}` : 'Terminal';
+    const color = this.hasErrorIndicators(cleaned) ? 'red' : 'blue';
+
+    const lines = cleaned.split('\n');
     const lang = this.detectOutputLanguage(cleaned);
-    const elements: FeishuCardElement[] = chunks.map(chunk => ({
-      tag: 'markdown' as const,
-      content: `\`\`\`${lang}\n${chunk}\n\`\`\``,
-    }));
+    const isSpecialFormat = lang !== 'bash';
+    const isShort = lines.length <= 3 && !isSpecialFormat;
+
+    let elements: FeishuCardElement[];
+    if (isShort) {
+      elements = [{ tag: 'markdown' as const, content: `**${cleaned}**` }];
+    } else {
+      const chunks = this.splitContent(cleaned, MAX_CARD_CONTENT_LENGTH);
+      elements = chunks.map(chunk => ({
+        tag: 'markdown' as const,
+        content: `\`\`\`${lang}\n${chunk}\n\`\`\``,
+      }));
+    }
+
     const footerParts: string[] = [];
     if (opts?.sessionId !== undefined) footerParts.push(`Session #${opts.sessionId}`);
     if (opts?.cwd) footerParts.push(opts.cwd);
+    if (opts?.durationMs !== undefined) footerParts.push(`${(opts.durationMs / 1000).toFixed(1)}s`);
     if (footerParts.length > 0) {
       elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: footerParts.join('  ·  ') }] });
     }
-    const color = this.hasErrorIndicators(cleaned) ? 'red' : 'blue';
     return this.card(title, color, elements);
   }
 

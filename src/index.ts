@@ -151,6 +151,7 @@ async function handleCommand(
       }
 
       // Use literal mode for user-provided text to prevent tmux key name interpretation
+      const startTime = Date.now();
       await tmux.sendLiteralKeys(tmuxName, cmd);
       if (!useRawMode) {
         await tmux.sendKeys(tmuxName, 'Enter');
@@ -162,14 +163,15 @@ async function handleCommand(
       setTimeout(async () => {
         try {
           const captured = await tmux.capturePane(tmuxName);
+          const durationMs = Date.now() - startTime;
           if (useRawMode) {
             // Raw mode: show full screen capture
-            const card = smartCard.buildTerminalOutputCard(captured, { sessionId: sid });
+            const card = smartCard.buildTerminalOutputCard(captured, { sessionId: sid, durationMs });
             await feishuBot.sendCard(conversationId, card);
           } else {
             // Normal mode: extract command output
             const { output, cwd } = extractCommandOutput(captured, cmd);
-            const card = smartCard.buildTerminalOutputCard(output, { command: cmd, sessionId: sid, cwd });
+            const card = smartCard.buildTerminalOutputCard(output, { command: cmd, sessionId: sid, cwd, durationMs });
             await feishuBot.sendCard(conversationId, card);
           }
         } catch (err) {

@@ -133,15 +133,17 @@ describe('SmartCardBuilder', () => {
   });
 
   describe('buildTerminalOutputCard', () => {
-    it('wraps output in a code block card', () => {
-      const card = builder.buildTerminalOutputCard('$ ls\nfile.txt');
-      const json = JSON.stringify(card);
-      const parsed = JSON.parse(json);
-
-      expect(parsed.header.title.content).toContain('Terminal');
-      const mdElements = parsed.elements.filter((e: any) => e.tag === 'markdown');
-      const hasCode = mdElements.some((e: any) => e.content.includes('```'));
+    it('wraps multi-line output in a code block card with language', () => {
+      const card = builder.buildTerminalOutputCard('$ ls\nfile.txt\ndir1\ndir2');
+      expect(card.header.title.content).toContain('Terminal');
+      const mdElements = card.elements.filter((e: any) => e.tag === 'markdown');
+      const hasCode = mdElements.some((e: any) => e.content.includes('```bash'));
       expect(hasCode).toBe(true);
+    });
+
+    it('uses command as title when provided', () => {
+      const card = builder.buildTerminalOutputCard('output\nline2\nline3\nline4', { command: 'ls -la' });
+      expect(card.header.title.content).toBe('$ ls -la');
     });
   });
 
@@ -214,7 +216,7 @@ describe('SmartCardBuilder', () => {
     });
 
     it('defaults to bash for plain terminal output', () => {
-      const plainOutput = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 file1\n-rw-r--r-- 1 user staff 256 Apr 10 file2';
+      const plainOutput = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 file1\n-rw-r--r-- 1 user staff 256 Apr 10 file2\nmore lines\nto force code block';
       const card = builder.buildTerminalOutputCard(plainOutput);
       const md = card.elements.find((e: any) => e.tag === 'markdown');
       expect(md.content).toMatch(/^```bash\n/);
@@ -256,6 +258,69 @@ describe('SmartCardBuilder', () => {
       const output = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 dir1';
       const card = builder.buildTerminalOutputCard(output);
       expect(card.header.template).toBe('blue');
+    });
+  });
+
+  describe('short output optimization', () => {
+    it('renders <=3 line plain output without code block', () => {
+      const output = 'hello world';
+      const card = builder.buildTerminalOutputCard(output);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).not.toContain('```');
+      expect(md.content).toContain('hello world');
+    });
+
+    it('renders 3-line plain output without code block', () => {
+      const output = 'line1\nline2\nline3';
+      const card = builder.buildTerminalOutputCard(output);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).not.toContain('```');
+    });
+
+    it('renders 4+ line output with code block', () => {
+      const output = 'line1\nline2\nline3\nline4';
+      const card = builder.buildTerminalOutputCard(output);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toContain('```');
+    });
+
+    it('renders JSON short output with code block despite being short', () => {
+      const output = '{"key": "value"}';
+      const card = builder.buildTerminalOutputCard(output);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toContain('```json');
+    });
+
+    it('renders (no output) as plain text', () => {
+      const card = builder.buildTerminalOutputCard('(no output)');
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).not.toContain('```');
+    });
+  });
+
+  describe('duration display', () => {
+    it('shows duration in footer when durationMs provided', () => {
+      const card = builder.buildTerminalOutputCard('output', {
+        command: 'ls',
+        sessionId: 1,
+        cwd: '~',
+        durationMs: 1500,
+      });
+      const noteEl = card.elements.find((e: any) => e.tag === 'note');
+      expect(noteEl).toBeDefined();
+      const noteContent = (noteEl as any).elements[0].content;
+      expect(noteContent).toContain('1.5s');
+    });
+
+    it('omits duration from footer when not provided', () => {
+      const card = builder.buildTerminalOutputCard('output', {
+        sessionId: 1,
+      });
+      const noteEl = card.elements.find((e: any) => e.tag === 'note');
+      expect(noteEl).toBeDefined();
+      const noteContent = (noteEl as any).elements[0].content;
+      // Should not contain duration pattern like "1.5s" - check for number followed by 's'
+      expect(noteContent).not.toMatch(/\d+\.\d+s/);
     });
   });
 });
