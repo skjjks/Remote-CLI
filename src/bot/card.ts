@@ -122,12 +122,77 @@ export class SmartCardBuilder {
     ]);
   }
 
+  /**
+   * Parse markdown tables into Feishu native table elements.
+   * Returns mixed array of markdown text segments and table elements.
+   */
+  private parseTablesFromText(text: string): FeishuCardElement[] {
+    const lines = text.split('\n');
+    const elements: FeishuCardElement[] = [];
+    let currentText: string[] = [];
+
+    const flushText = () => {
+      const t = currentText.join('\n').trim();
+      if (t) {
+        const chunks = this.splitContent(t, MAX_CARD_CONTENT_LENGTH);
+        for (const chunk of chunks) {
+          elements.push({ tag: 'markdown', content: chunk });
+        }
+      }
+      currentText = [];
+    };
+
+    let i = 0;
+    while (i < lines.length) {
+      // Detect markdown table: line with |, followed by separator line with |---|
+      if (lines[i].includes('|') && i + 1 < lines.length && /^\|?\s*[-:]+\s*\|/.test(lines[i + 1])) {
+        flushText();
+
+        // Parse header
+        const headerCells = lines[i].split('|').map(c => c.trim()).filter(c => c);
+        i++; // skip separator line
+        i++;
+
+        // Parse rows
+        const rows: Record<string, string>[] = [];
+        while (i < lines.length && lines[i].includes('|') && !/^\s*$/.test(lines[i])) {
+          const cells = lines[i].split('|').map(c => c.trim()).filter(c => c);
+          const row: Record<string, string> = {};
+          headerCells.forEach((h, idx) => {
+            row[`col_${idx}`] = cells[idx] || '';
+          });
+          rows.push(row);
+          i++;
+        }
+
+        // Build Feishu table element
+        const columns = headerCells.map((h, idx) => ({
+          name: `col_${idx}`,
+          display_name: h,
+          data_type: 'text' as const,
+          width: 'auto' as const,
+        }));
+
+        elements.push({
+          tag: 'table',
+          page_size: Math.max(rows.length, 1),
+          row_height: 'low',
+          header_style: { text_align: 'left', text_size: 'normal', background_style: 'grey', bold: true },
+          columns,
+          rows,
+        } as any);
+      } else {
+        currentText.push(lines[i]);
+        i++;
+      }
+    }
+
+    flushText();
+    return elements;
+  }
+
   buildTextCard(text: string, footer?: { backend?: string; sessionId?: string; model?: string; cwd?: string; context?: string; status?: string; costUsd?: number; inputTokens?: number; outputTokens?: number }): FeishuCardV2 {
-    const chunks = this.splitContent(text, MAX_CARD_CONTENT_LENGTH);
-    const elements: FeishuCardElement[] = chunks.map(chunk => ({
-      tag: 'markdown' as const,
-      content: chunk,
-    }));
+    const elements: FeishuCardElement[] = this.parseTablesFromText(text);
 
     // Backend name + session ID for title
     const backendName = footer?.backend === 'opencode' ? 'Opencode' : 'Claude';
