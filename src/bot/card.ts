@@ -131,7 +131,8 @@ export class SmartCardBuilder {
 
     // Backend name + session ID for title
     const backendName = footer?.backend === 'opencode' ? 'Opencode' : 'Claude';
-    const sessionTag = footer?.sessionId ? ` #${footer.sessionId.slice(-6)}` : '';
+    const sid = footer?.sessionId;
+    const sessionTag = sid ? ` [${sid.length > 12 ? sid.slice(-8) : sid}]` : '';
     const color = footer?.backend === 'opencode' ? 'grey' : 'orange';
 
     // Dynamic title based on status
