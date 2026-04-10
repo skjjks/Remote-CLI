@@ -17,7 +17,7 @@
     "pm2:stop": "pm2 stop remote-cli",
     "pm2:restart": "pm2 restart remote-cli",
     "pm2:logs": "pm2 logs remote-cli",
-    "pm2:status": "pm2 status",
+    "pm2:status": "pm2 status"
   },
   "keywords": [
     "feishu",
