@@ -9,10 +9,8 @@ type OpencodeClient = any;
 let _sdkModule: any = null;
 async function loadSDK(): Promise<{ createOpencode: (opts?: any) => Promise<{ client: any; server: { url: string; close(): void } }> }> {
   if (!_sdkModule) {
-    // Use Function constructor to preserve real ESM import() — prevents
-    // TypeScript from compiling it into require() in CommonJS output.
-    const dynamicImport = new Function('specifier', 'return import(specifier)');
-    _sdkModule = await dynamicImport('@opencode-ai/sdk');
+    // Dynamic import of ESM-only module
+    _sdkModule = await import('@opencode-ai/sdk');
   }
   return _sdkModule;
 }

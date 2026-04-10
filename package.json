@@ -12,6 +12,7 @@
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
     "lint": "eslint src --ext .ts",
+    "deadcode": "knip --no-config-hints",
     "clean": "rm -rf dist",
     "deploy": "npm run build && pm2 start ecosystem.config.js",
     "pm2:stop": "pm2 stop remote-cli",
@@ -46,9 +47,10 @@
     "@typescript-eslint/eslint-plugin": "^7.7.0",
     "@typescript-eslint/parser": "^7.7.0",
     "eslint": "^8.57.0",
+    "knip": "^6.3.1",
     "ts-node": "^10.9.2",
     "typescript": "^5.4.5",
-    "vitest": "^1.5.0"
+    "vitest": "^1.6.1"
   },
   "engines": {
     "node": ">=18.0.0"

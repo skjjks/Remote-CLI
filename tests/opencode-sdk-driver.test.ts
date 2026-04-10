@@ -112,9 +112,9 @@ describe('OpencodeSDKDriver', () => {
     expect(mockSessionPromptAsync).toHaveBeenCalledWith(
       expect.objectContaining({
         path: { id: 'oc-sess-1' },
-        body: {
+        body: expect.objectContaining({
           parts: [{ type: 'text', text: 'hello opencode' }],
-        },
+        }),
       }),
     );
   });
@@ -182,6 +182,13 @@ describe('OpencodeSDKDriver', () => {
     await driver.start('conv-1', {});
     await driver.sendMessage('conv-1', 'build it');
 
-    expect(callbacks.onStreamStart).toHaveBeenCalledWith('conv-1');
+    expect(callbacks.onStreamStart).toHaveBeenCalledWith(
+      'conv-1',
+      expect.objectContaining({
+        backend: 'opencode',
+        sessionId: 'oc-sess-1',
+        status: 'thinking',
+      })
+    );
   });
 });

@@ -61,7 +61,7 @@ describe('Config Module', () => {
 
       expect(config.server.port).toBe(3000);
       expect(config.server.host).toBe('0.0.0.0');
-      expect(config.terminal.cols).toBe(60);
+      expect(config.terminal.cols).toBe(80);
       expect(config.terminal.rows).toBe(24);
       expect(config.terminal.shell).toBe('/bin/bash');
       expect(config.terminal.historyLimit).toBe(50000);

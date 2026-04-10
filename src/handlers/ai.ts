@@ -110,7 +110,7 @@ async function handleAICommand(
   const manager = backend === 'opencode' ? getOpencodeManager() : getClaudeManager();
 
   // Find or create a session for this backend
-  let activeSessionId = activeSessions.get(conversationId);
+  const activeSessionId = activeSessions.get(conversationId);
   let session: SessionInfo | undefined;
 
   if (activeSessionId !== undefined) {

@@ -35,7 +35,7 @@ export function extractCommandOutput(captured: string, command: string): { outpu
   let cwd = '';
   for (let i = trimmedLines.length - 1; i >= 0; i--) {
     // Match pattern like user@host:~/path$
-    const cwdMatch = trimmedLines[i].match(/:([~\/][^\$#]*)[\$#]/);
+    const cwdMatch = trimmedLines[i].match(/:([~/][^$#]*)[$#]/);
     if (cwdMatch) {
       cwd = cwdMatch[1];
       break;
@@ -80,7 +80,7 @@ export async function handleShellCommand(conversationId: string, command: string
   addToHistory(conversationId, command);
 
   const sessionManager = getSessionManager();
-  let activeSessionId = activeSessions.get(conversationId);
+  const activeSessionId = activeSessions.get(conversationId);
   let session: SessionInfo | undefined;
 
   if (activeSessionId !== undefined) {
