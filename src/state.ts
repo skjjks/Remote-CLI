@@ -21,6 +21,26 @@ export interface PendingPrompt {
  */
 export const pendingPrompts: Map<string, PendingPrompt> = new Map();
 
+/**
+ * A pending permission or elicitation request waiting for user response.
+ * Stored here so both the SDK driver and the card-action/message handler
+ * can access the same promise resolver.
+ */
+export interface PendingRequest {
+  type: 'permission' | 'question';
+  resolve: (value: any) => void;
+  conversationId: string;
+  /** Auto-deny timer handle so we can clear it on resolution. */
+  timer: ReturnType<typeof setTimeout>;
+}
+
+/**
+ * Pending permission/question requests waiting for user response.
+ * Keyed by toolUseID (permissions) or a generated elicitation ID (questions).
+ * Bounded by active conversations — entries auto-expire after 5 minutes.
+ */
+export const pendingRequests: Map<string, PendingRequest> = new Map();
+
 /** Command history per conversation (most recent last) */
 export const commandHistory: Map<string, string[]> = new Map();
 

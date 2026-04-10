@@ -3,7 +3,7 @@ import { getSessionManager, SessionInfo } from '../terminal/session';
 import { AIManager, AIManagerCallbacks } from '../ai/manager';
 import { ClaudeSDKDriver } from '../ai/drivers/claude-sdk';
 import { OpencodeSDKDriver } from '../ai/drivers/opencode-sdk';
-import { activeSessions, smartCard } from '../state';
+import { activeSessions, smartCard, pendingRequests } from '../state';
 
 // ── Shared AI callbacks ──
 
@@ -71,6 +71,38 @@ async function handleAICommand(
   const feishuBot = getFeishuBot();
   if (!prompt) {
     await feishuBot.sendText(conversationId, `Usage: !${backend} <prompt> or just send a message`);
+    return;
+  }
+
+  // Check for pending permission/question responses.
+  // If the user sends a number (0-2) and there is a pending request for this
+  // conversation, resolve it instead of forwarding to the AI backend.
+  const pendingKeys = [...pendingRequests.keys()].filter(k => {
+    const req = pendingRequests.get(k);
+    return req?.conversationId === conversationId;
+  });
+
+  if (pendingKeys.length > 0 && /^[0-2]$/.test(prompt.trim())) {
+    const key = pendingKeys[0];
+    const pending = pendingRequests.get(key)!;
+    pendingRequests.delete(key);
+
+    const choice = parseInt(prompt.trim(), 10);
+    if (pending.type === 'permission') {
+      if (choice === 0) {
+        pending.resolve({ behavior: 'allow' });
+      } else if (choice === 2) {
+        pending.resolve({ behavior: 'allow', updatedPermissions: [] });
+      } else {
+        pending.resolve({ behavior: 'deny', message: 'User denied permission' });
+      }
+    } else if (pending.type === 'question') {
+      if (choice === 0) {
+        pending.resolve({ action: 'accept' });
+      } else {
+        pending.resolve({ action: 'decline' });
+      }
+    }
     return;
   }
 

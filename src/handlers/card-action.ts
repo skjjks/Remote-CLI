@@ -10,7 +10,7 @@ import {
   PERMIT_DENY,
   PERMIT_ALWAYS,
 } from '../bot/card';
-import { activeSessions, pendingPrompts } from '../state';
+import { activeSessions, pendingPrompts, pendingRequests } from '../state';
 import { getClaudeManager } from './ai';
 
 // ── Card action handlers ──
@@ -26,8 +26,48 @@ export async function handleCardAction(
 
   // Handle menu selection (Claude interactive menus)
   if (isMenuAction(value)) {
-    const claudeManager = getClaudeManager();
     const menuIndex = getMenuIndex(value);
+
+    // Check if this resolves a pending elicitation (question) request
+    const pendingKey = [...pendingRequests.keys()].find(k => {
+      const req = pendingRequests.get(k);
+      return req?.conversationId === conversationId && req.type === 'question';
+    });
+
+    if (pendingKey) {
+      const pending = pendingRequests.get(pendingKey)!;
+      pendingRequests.delete(pendingKey);
+
+      if (menuIndex === 0) {
+        pending.resolve({ action: 'accept' });
+      } else {
+        pending.resolve({ action: 'decline' });
+      }
+      return;
+    }
+
+    // Also check for pending permission requests (when menu card is used for permissions)
+    const pendingPermKey = [...pendingRequests.keys()].find(k => {
+      const req = pendingRequests.get(k);
+      return req?.conversationId === conversationId && req.type === 'permission';
+    });
+
+    if (pendingPermKey) {
+      const pending = pendingRequests.get(pendingPermKey)!;
+      pendingRequests.delete(pendingPermKey);
+
+      if (menuIndex === 0) {
+        pending.resolve({ behavior: 'allow' });
+      } else if (menuIndex === 2) {
+        pending.resolve({ behavior: 'allow', updatedPermissions: [] });
+      } else {
+        pending.resolve({ behavior: 'deny', message: 'User denied permission' });
+      }
+      return;
+    }
+
+    // No pending request — forward as regular menu selection
+    const claudeManager = getClaudeManager();
     if (menuIndex >= 0) {
       await claudeManager.selectMenuOption(conversationId, menuIndex);
     }
@@ -68,6 +108,30 @@ export async function handlePermitAction(conversationId: string, value: string):
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
 
+  // Try to resolve a pending SDK permission request first
+  const pendingKey = [...pendingRequests.keys()].find(k => {
+    const req = pendingRequests.get(k);
+    return req?.conversationId === conversationId && req.type === 'permission';
+  });
+
+  if (pendingKey) {
+    const pending = pendingRequests.get(pendingKey)!;
+    pendingRequests.delete(pendingKey);
+
+    if (value === PERMIT_DENY) {
+      pending.resolve({ behavior: 'deny', message: 'User denied permission' });
+      return;
+    }
+    if (value === PERMIT_ALWAYS) {
+      pending.resolve({ behavior: 'allow', updatedPermissions: [] });
+      return;
+    }
+    // PERMIT_ALLOW
+    pending.resolve({ behavior: 'allow' });
+    return;
+  }
+
+  // Fallback: legacy terminal-mode permission handling
   const activeSessionId = activeSessions.get(conversationId);
   if (activeSessionId === undefined) return;
 

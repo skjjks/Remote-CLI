@@ -1,7 +1,8 @@
-import { query, type Query, type SDKMessage, type Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
+import { query, type Query, type SDKMessage, type Options as SDKOptions, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { getConfig } from '../../config';
 import type { AISessionDriver, PendingPermission } from '../types';
 import type { AIManagerCallbacks, AIMetadata } from '../manager';
+import { pendingRequests } from '../../state';
 
 interface ClaudeSession {
   conversationId: string;
@@ -54,6 +55,97 @@ export class ClaudeSDKDriver implements AISessionDriver {
     if (mode === 'auto') {
       sdkOptions.permissionMode = 'bypassPermissions';
       sdkOptions.allowDangerouslySkipPermissions = true;
+    } else {
+      // In default (non-auto) mode, register permission callback
+      sdkOptions.canUseTool = async (toolName, input, options) => {
+        return new Promise<PermissionResult>((resolve) => {
+          const requestId = options.toolUseID || `perm-${Date.now()}`;
+          const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+          const timer = setTimeout(() => {
+            pendingRequests.delete(requestId);
+            resolve({ behavior: 'deny', message: 'Permission request timed out (5 min)' });
+          }, TIMEOUT_MS);
+
+          pendingRequests.set(requestId, {
+            type: 'permission',
+            resolve: (value: PermissionResult) => {
+              clearTimeout(timer);
+              resolve(value);
+            },
+            conversationId,
+            timer,
+          });
+
+          // Build description of what the tool wants to do
+          let description = `**${toolName}**`;
+          if (toolName === 'Bash' && input.command) {
+            description += `\n\`\`\`\n${String(input.command).slice(0, 500)}\n\`\`\``;
+          } else if (toolName === 'Edit' && input.file_path) {
+            description += `\nFile: \`${input.file_path}\``;
+          } else if ((toolName === 'Read' || toolName === 'Write') && input.file_path) {
+            description += `\nFile: \`${input.file_path}\``;
+          } else {
+            const summary = JSON.stringify(input).slice(0, 200);
+            description += `\n${summary}`;
+          }
+
+          // Send permission card via onMenu callback
+          this.callbacks.onMenu(conversationId, {
+            title: `${options.title || toolName} wants permission`,
+            options: [
+              { label: 'Allow', index: 0, selected: false },
+              { label: 'Deny', index: 1, selected: false },
+              { label: 'Allow All', index: 2, selected: false },
+            ],
+            hint: description,
+          });
+        });
+      };
+
+      // Register elicitation callback for MCP / AskUserQuestion
+      sdkOptions.onElicitation = async (request, { signal }) => {
+        return new Promise<any>((resolve) => {
+          const requestId = `elicit-${Date.now()}`;
+          const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+
+          const timer = setTimeout(() => {
+            pendingRequests.delete(requestId);
+            resolve({ action: 'decline' as const });
+          }, TIMEOUT_MS);
+
+          // If aborted externally, clean up
+          signal.addEventListener('abort', () => {
+            clearTimeout(timer);
+            pendingRequests.delete(requestId);
+            resolve({ action: 'cancel' as const });
+          }, { once: true });
+
+          pendingRequests.set(requestId, {
+            type: 'question',
+            resolve: (value: any) => {
+              clearTimeout(timer);
+              resolve(value);
+            },
+            conversationId,
+            timer,
+          });
+
+          // Build menu from elicitation message
+          const title = request.title || request.message || 'Claude has a question';
+          const hint = request.description || '';
+
+          // For form-based elicitations, show accept/decline
+          this.callbacks.onMenu(conversationId, {
+            title,
+            options: [
+              { label: 'Accept', index: 0, selected: false },
+              { label: 'Decline', index: 1, selected: false },
+            ],
+            hint,
+          });
+        });
+      };
     }
 
     if (session.sessionId) {
