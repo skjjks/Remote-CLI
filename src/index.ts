@@ -192,31 +192,30 @@ async function main(): Promise<void> {
   const sessionManager = getSessionManager();
   await sessionManager.reconnectSessions();
 
-  // Reconnect Claude tmux sessions that survived bot restart
+  // Reconnect Claude SDK sessions that survived bot restart
   const claudeManager = getClaudeManager();
   const allSessions = sessionManager.getSessions();
   for (const session of allSessions) {
-    if (session.type === 'claude' && session.tmuxName && session.conversationId) {
-      const ok = await claudeManager.reconnectSession(session.conversationId, session.tmuxName);
+    if (session.type === 'claude' && session.claudeSessionId && session.conversationId) {
+      const ok = await claudeManager.reconnectSession(session.conversationId, session.claudeSessionId);
       if (ok) {
         activeSessions.set(session.conversationId, session.id);
       } else {
-        // tmux session gone, clean up
-        console.log(`[INIT] Claude session ${session.id} (${session.tmuxName}) no longer exists, removing`);
+        console.log(`[INIT] Claude session ${session.id} (${session.claudeSessionId}) no longer exists, removing`);
         await sessionManager.killSession(session.id).catch(err => console.warn('[INIT] Failed to kill stale session:', err.message || err));
       }
     }
   }
 
-  // Reconnect opencode tmux sessions
+  // Reconnect opencode SDK sessions
   const opencodeManager = getOpencodeManager();
   for (const session of allSessions) {
-    if (session.type === 'opencode' && session.tmuxName && session.conversationId) {
-      const ok = await opencodeManager.reconnectSession(session.conversationId, session.tmuxName);
+    if (session.type === 'opencode' && session.claudeSessionId && session.conversationId) {
+      const ok = await opencodeManager.reconnectSession(session.conversationId, session.claudeSessionId);
       if (ok) {
         activeSessions.set(session.conversationId, session.id);
       } else {
-        console.log(`[INIT] Opencode session ${session.id} (${session.tmuxName}) no longer exists, removing`);
+        console.log(`[INIT] Opencode session ${session.id} (${session.claudeSessionId}) no longer exists, removing`);
         await sessionManager.killSession(session.id).catch(err => console.warn('[INIT] Failed to kill stale session:', err.message || err));
       }
     }
