@@ -82,7 +82,7 @@ async function handleAICommand(
     return req?.conversationId === conversationId;
   });
 
-  if (pendingKeys.length > 0 && /^[0-2]$/.test(prompt.trim())) {
+  if (pendingKeys.length > 0 && /^\d+$/.test(prompt.trim())) {
     const key = pendingKeys[0];
     const pending = pendingRequests.get(key)!;
     pendingRequests.delete(key);
@@ -97,11 +97,8 @@ async function handleAICommand(
         pending.resolve({ behavior: 'deny', message: 'User denied permission' });
       }
     } else if (pending.type === 'question') {
-      if (choice === 0) {
-        pending.resolve({ action: 'accept' });
-      } else {
-        pending.resolve({ action: 'decline' });
-      }
+      // For opencode questions, send the selected option index
+      pending.resolve(choice);
     }
     return;
   }

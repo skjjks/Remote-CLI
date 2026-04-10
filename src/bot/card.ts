@@ -245,12 +245,6 @@ export class SmartCardBuilder {
   buildMenuCard(title: string, options: Array<{ label: string; index: number; selected: boolean }>, hint: string): FeishuCardV2 {
     const parts: string[] = [];
 
-    // Context/description above options
-    if (title) {
-      parts.push(title);
-      parts.push('');
-    }
-
     // Options
     for (const opt of options) {
       if (opt.selected) {

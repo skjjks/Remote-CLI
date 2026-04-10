@@ -253,6 +253,28 @@ export class OpencodeSDKDriver implements AISessionDriver {
       options?: Array<{ label: string; description?: string }>;
     }>;
 
+    // Store pending question for answer resolution
+    const requestId = `oc-question-${questionId}`;
+    const timer = setTimeout(() => {
+      pendingRequests.delete(requestId);
+    }, 5 * 60 * 1000);
+
+    pendingRequests.set(requestId, {
+      type: 'question',
+      resolve: async (result: any) => {
+        clearTimeout(timer);
+        // Send answer back via tui.control.response
+        try {
+          const client = await ensureServer();
+          await (client as any).tui.control.response({ body: result });
+        } catch (err) {
+          console.warn('[OPENCODE-SDK] Failed to send question response:', err instanceof Error ? err.message : err);
+        }
+      },
+      conversationId: session.conversationId,
+      timer,
+    });
+
     // Send each question as a separate menu card
     for (const q of questions) {
       const menuOptions = (q.options || []).map((opt, i) => ({
