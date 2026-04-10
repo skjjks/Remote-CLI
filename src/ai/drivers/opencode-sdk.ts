@@ -1,5 +1,6 @@
 import type { AISessionDriver } from '../types';
 import type { AIManagerCallbacks, AIMetadata } from '../manager';
+import { pendingRequests } from '../../state';
 
 // @opencode-ai/sdk is ESM-only. We use dynamic import() to load it from CJS.
 // All SDK types are used structurally (duck-typed) to avoid compile-time ESM imports.
@@ -149,8 +150,11 @@ export class OpencodeSDKDriver implements AISessionDriver {
         this.handleSessionError(event);
         break;
 
+      case 'permission.updated':
+        this.handlePermission(event);
+        break;
+
       default:
-        // Ignore other event types (file.edited, todo.updated, etc.)
         break;
     }
   }
@@ -305,6 +309,66 @@ export class OpencodeSDKDriver implements AISessionDriver {
       : 'Unknown opencode error';
 
     this.callbacks.onError(session.conversationId, errorMsg);
+  }
+
+  private handlePermission(event: any): void {
+    const permission = event.properties;
+    const session = this.findSessionById(permission.sessionID);
+    if (!session) return;
+
+    const permissionId = permission.id;
+    const title = permission.title || permission.type || 'Permission request';
+
+    // Build description from metadata
+    let description = `**${permission.type}**`;
+    if (permission.pattern) {
+      const patterns = Array.isArray(permission.pattern) ? permission.pattern : [permission.pattern];
+      description += `\n${patterns.join(', ')}`;
+    }
+
+    // Store pending request
+    const requestId = `oc-perm-${permissionId}`;
+    const timer = setTimeout(() => {
+      // Auto-reject after 5 minutes
+      pendingRequests.delete(requestId);
+      this.respondToPermission(session.sessionId!, permissionId, 'reject');
+    }, 5 * 60 * 1000);
+
+    pendingRequests.set(requestId, {
+      type: 'permission',
+      resolve: (result: any) => {
+        clearTimeout(timer);
+        const response = result.behavior === 'allow'
+          ? (result.updatedPermissions?.length ? 'always' : 'once')
+          : 'reject';
+        this.respondToPermission(session.sessionId!, permissionId, response);
+      },
+      conversationId: session.conversationId,
+      timer,
+    });
+
+    // Send permission card via menu callback
+    this.callbacks.onMenu(session.conversationId, {
+      title,
+      options: [
+        { label: 'Allow', index: 0, selected: false },
+        { label: 'Deny', index: 1, selected: false },
+        { label: 'Allow Always', index: 2, selected: false },
+      ],
+      hint: description,
+    });
+  }
+
+  private async respondToPermission(sessionId: string, permissionId: string, response: 'once' | 'always' | 'reject'): Promise<void> {
+    try {
+      const client = await ensureServer();
+      await (client as any).postSessionIdPermissionsPermissionId({
+        path: { id: sessionId, permissionID: permissionId },
+        body: { response },
+      });
+    } catch (err) {
+      console.warn('[OPENCODE-SDK] Failed to respond to permission:', err instanceof Error ? err.message : err);
+    }
   }
 
   private findSessionById(sessionId: string | undefined): SessionState | undefined {
