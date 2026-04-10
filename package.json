@@ -18,11 +18,6 @@
     "pm2:restart": "pm2 restart remote-cli",
     "pm2:logs": "pm2 logs remote-cli",
     "pm2:status": "pm2 status",
-    "docker:build": "docker build -t remote-cli .",
-    "docker:up": "docker compose up -d",
-    "docker:down": "docker compose down",
-    "docker:logs": "docker compose logs -f",
-    "docker:restart": "docker compose restart"
   },
   "keywords": [
     "feishu",
