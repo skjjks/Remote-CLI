@@ -21,6 +21,11 @@ interface SessionState {
   sessionId?: string;       // Opencode session ID
   messageId?: string;        // Current Feishu card message ID
   accumulatedText: string;
+  assistantMessageIds: Set<string>;
+  lastTokens?: { input: number; output: number };
+  lastCost?: number;
+  cwd?: string;
+  model?: string;
 }
 
 // Singleton server — shared across all driver instances
@@ -56,13 +61,14 @@ export class OpencodeSDKDriver implements AISessionDriver {
     });
 
     const sessionData = result.data as any;
-    console.log('[OPENCODE-SDK] session.create result:', JSON.stringify(sessionData, null, 2)?.slice(0, 500));
     const sessionId = sessionData?.id;
+    console.log(`[OPENCODE-SDK] Session created: ${sessionId}`);
 
     const session: SessionState = {
       conversationId,
       sessionId,
       accumulatedText: '',
+      assistantMessageIds: new Set(),
     };
     this.sessions.set(conversationId, session);
 
@@ -84,6 +90,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     // Reset for new message
     session.accumulatedText = '';
     session.messageId = undefined;
+    session.assistantMessageIds.clear();
 
     // Send prompt asynchronously — returns immediately, events arrive via SSE
     await client.session.promptAsync({
@@ -101,20 +108,18 @@ export class OpencodeSDKDriver implements AISessionDriver {
   private async startEventLoop(client: OpencodeClient): Promise<void> {
     this.eventLoopRunning = true;
     try {
-      // event.subscribe returns { stream: AsyncGenerator<Event> }
-      const { stream } = await client.event.subscribe();
+      const result = await client.event.subscribe();
+      const stream = (result as any)?.stream || result;
 
       for await (const rawEvent of stream) {
-        // The stream yields Event objects (union type) directly.
-        // However, with the global endpoint it may be wrapped as GlobalEvent.
         const event = rawEvent as any;
 
         // Unwrap GlobalEvent wrapper if present
         let payload: any;
         if ('payload' in event && event.payload) {
-          payload = event.payload as any;
+          payload = event.payload;
         } else {
-          payload = event as any;
+          payload = event;
         }
 
         this.handleEvent(payload);
@@ -128,16 +133,20 @@ export class OpencodeSDKDriver implements AISessionDriver {
 
   private handleEvent(event: any): void {
     switch (event.type) {
+      case 'message.updated':
+        this.handleMessageUpdated(event);
+        break;
+
       case 'message.part.updated':
-        this.handlePartUpdated(event as any);
+        this.handlePartUpdated(event);
         break;
 
       case 'session.status':
-        this.handleSessionStatus(event as any);
+        this.handleSessionStatus(event);
         break;
 
       case 'session.error':
-        this.handleSessionError(event as any);
+        this.handleSessionError(event);
         break;
 
       default:
@@ -146,10 +155,43 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
+  private handleMessageUpdated(event: any): void {
+    const { info } = event.properties;
+    const sessionID = event.properties.sessionID || info?.sessionID;
+    const session = this.findSessionById(sessionID);
+    if (!session) return;
+
+    // Track assistant message IDs so we can filter out user message parts
+    if (info?.role === 'assistant' && info?.id) {
+      session.assistantMessageIds.add(info.id);
+      // Extract metadata from assistant message
+      if (info.tokens) {
+        session.lastTokens = {
+          input: info.tokens.input || 0,
+          output: info.tokens.output || 0,
+        };
+      }
+      if (info.cost !== undefined) {
+        session.lastCost = info.cost;
+      }
+      if (info.path?.cwd) {
+        session.cwd = info.path.cwd;
+      }
+      if (info.modelID) {
+        session.model = `${info.providerID || ''}/${info.modelID}`;
+      }
+    }
+  }
+
   private handlePartUpdated(event: any): void {
     const { part, delta } = event.properties;
-    const session = this.findSessionById(part.sessionID);
+    const sessionID = event.properties.sessionID || part.sessionID;
+    const session = this.findSessionById(sessionID);
     if (!session) return;
+
+    // Only process parts from assistant messages (skip user echo)
+    const messageID = part.messageID;
+    if (messageID && !session.assistantMessageIds.has(messageID)) return;
 
     if (part.type === 'text') {
       const textPart = part as any;
@@ -190,7 +232,16 @@ export class OpencodeSDKDriver implements AISessionDriver {
         session.conversationId,
         session.messageId,
         session.accumulatedText,
-        { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
+        {
+          backend: 'opencode',
+          sessionId: session.sessionId,
+          model: session.model,
+          cwd: session.cwd,
+          inputTokens: session.lastTokens?.input,
+          outputTokens: session.lastTokens?.output,
+          costUsd: session.lastCost,
+          status: 'working',
+        },
       );
     }
   }
@@ -203,7 +254,16 @@ export class OpencodeSDKDriver implements AISessionDriver {
     if (status.type === 'idle') {
       // Session finished processing
       if (session.accumulatedText && session.messageId) {
-        const metadata: AIMetadata = { backend: 'opencode', sessionId: session.sessionId, status: 'done' };
+        const metadata: AIMetadata = {
+          backend: 'opencode',
+          sessionId: session.sessionId,
+          model: session.model,
+          cwd: session.cwd,
+          inputTokens: session.lastTokens?.input,
+          outputTokens: session.lastTokens?.output,
+          costUsd: session.lastCost,
+          status: 'done',
+        };
         this.callbacks.onStreamEnd(
           session.conversationId,
           session.messageId,
@@ -273,6 +333,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
           conversationId,
           sessionId,
           accumulatedText: '',
+          assistantMessageIds: new Set(),
         });
         console.log(`[OPENCODE-SDK] Reconnected session ${sessionId}`);
         if (!this.eventLoopRunning) this.startEventLoop(client);
