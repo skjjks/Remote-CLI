@@ -137,12 +137,6 @@ export class OpencodeSDKDriver implements AISessionDriver {
           payload = event;
         }
 
-        const evtType = payload?.type;
-        // Log interesting events
-        if (evtType === 'question.asked' || evtType === 'permission.updated') {
-          console.log(`[OPENCODE-SDK] Event ${evtType}:`, JSON.stringify(payload, null, 2)?.slice(0, 800));
-        }
-
         this.handleEvent(payload);
       }
     } catch (err) {
@@ -176,10 +170,6 @@ export class OpencodeSDKDriver implements AISessionDriver {
 
       case 'permission.updated':
         this.handlePermission(event);
-        break;
-
-      case 'question.asked':
-        this.handleQuestionAsked(event);
         break;
 
       default:
@@ -241,17 +231,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
-  private async handleQuestionAsked(_event: any): Promise<void> {
-    // Decline the question tool — let opencode ask questions in text instead.
-    // Same approach as Claude: text-based Q&A is more natural in chat.
-    try {
-      const client = await ensureServer();
-      await (client as any).tui.control.response({ body: null });
-      console.log('[OPENCODE-SDK] Declined question tool, opencode will ask in text');
-    } catch (err) {
-      console.warn('[OPENCODE-SDK] Failed to decline question:', err instanceof Error ? err.message : err);
-    }
-  }
+
 
   private handlePartUpdated(event: any): void {
     const { part, delta } = event.properties;
