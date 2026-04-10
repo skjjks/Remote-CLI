@@ -214,8 +214,16 @@ export class FeishuBot {
           content: JSON.stringify(card),
         },
       });
-    } catch (error) {
-      console.error('Failed to update card:', error);
+    } catch (error: unknown) {
+      // Feishu rate limit (230020) or other API errors — log concisely, don't dump full Axios object
+      const axiosErr = error as any;
+      const code = axiosErr?.response?.data?.code;
+      const msg = axiosErr?.response?.data?.msg;
+      if (code === 230020) {
+        // Rate limit — expected under fast streaming, just skip silently
+      } else {
+        console.warn(`[CARD] Failed to update card: ${msg || (error instanceof Error ? error.message : String(error))}`);
+      }
       // Don't throw — card update failures are non-critical
     }
   }

@@ -28,7 +28,10 @@ interface SessionState {
   lastCost?: number;
   cwd?: string;
   model?: string;
+  lastUpdateTime: number;   // Throttle card updates
 }
+
+const CARD_UPDATE_INTERVAL = 1000; // Min ms between card PATCH requests
 
 // Singleton server — shared across all driver instances
 let _server: { url: string; close(): void } | null = null;
@@ -71,6 +74,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
       sessionId,
       accumulatedText: '',
       assistantMessageIds: new Set(),
+      lastUpdateTime: 0,
     };
     this.sessions.set(conversationId, session);
 
@@ -214,21 +218,8 @@ export class OpencodeSDKDriver implements AISessionDriver {
     // Append text delta
     session.accumulatedText += delta;
 
-    // Stream update
-    if (session.messageId && session.accumulatedText) {
-      this.callbacks.onStreamUpdate(
-        session.conversationId,
-        session.messageId,
-        session.accumulatedText,
-        {
-          backend: 'opencode',
-          sessionId: session.sessionId,
-          model: session.model,
-          cwd: session.cwd,
-          status: 'working',
-        },
-      );
-    }
+    // Throttled stream update to avoid Feishu rate limit
+    this.throttledUpdate(session);
   }
 
 
@@ -276,24 +267,8 @@ export class OpencodeSDKDriver implements AISessionDriver {
       }
     }
 
-    // Stream update to Feishu card
-    if (session.messageId && session.accumulatedText) {
-      this.callbacks.onStreamUpdate(
-        session.conversationId,
-        session.messageId,
-        session.accumulatedText,
-        {
-          backend: 'opencode',
-          sessionId: session.sessionId,
-          model: session.model,
-          cwd: session.cwd,
-          inputTokens: session.lastTokens?.input,
-          outputTokens: session.lastTokens?.output,
-          costUsd: session.lastCost,
-          status: 'working',
-        },
-      );
-    }
+    // Throttled stream update
+    this.throttledUpdate(session);
   }
 
   private async handleSessionStatus(event: any): Promise<void> {
@@ -417,6 +392,28 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
+  private throttledUpdate(session: SessionState): void {
+    if (!session.messageId || !session.accumulatedText) return;
+    const now = Date.now();
+    if (now - session.lastUpdateTime < CARD_UPDATE_INTERVAL) return;
+    session.lastUpdateTime = now;
+    this.callbacks.onStreamUpdate(
+      session.conversationId,
+      session.messageId,
+      session.accumulatedText,
+      {
+        backend: 'opencode',
+        sessionId: session.sessionId,
+        model: session.model,
+        cwd: session.cwd,
+        inputTokens: session.lastTokens?.input,
+        outputTokens: session.lastTokens?.output,
+        costUsd: session.lastCost,
+        status: 'working',
+      },
+    );
+  }
+
   private findSessionById(sessionId: string | undefined): SessionState | undefined {
     if (!sessionId) return undefined;
     for (const session of this.sessions.values()) {
@@ -464,6 +461,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
           sessionId,
           accumulatedText: '',
           assistantMessageIds: new Set(),
+      lastUpdateTime: 0,
         });
         console.log(`[OPENCODE-SDK] Reconnected session ${sessionId}`);
         if (!this.eventLoopRunning) this.startEventLoop(client);
