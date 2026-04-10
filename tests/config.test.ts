@@ -22,7 +22,7 @@ describe('Config Module', () => {
       process.env.FEISHU_APP_SECRET = 'test_app_secret';
       process.env.ALLOWED_USERS = 'user1,user2';
       process.env.PORT = '8080';
-      process.env.TERMINAL_COLS = '100';
+      process.env.TERMINAL_COLS = '60';
       process.env.TERMINAL_ROWS = '30';
 
       const config = loadConfig();
@@ -31,7 +31,7 @@ describe('Config Module', () => {
       expect(config.feishu.appSecret).toBe('test_app_secret');
       expect(config.security.allowedUsers).toEqual(['user1', 'user2']);
       expect(config.server.port).toBe(8080);
-      expect(config.terminal.cols).toBe(100);
+      expect(config.terminal.cols).toBe(60);
       expect(config.terminal.rows).toBe(30);
     });
 
@@ -61,7 +61,7 @@ describe('Config Module', () => {
 
       expect(config.server.port).toBe(3000);
       expect(config.server.host).toBe('0.0.0.0');
-      expect(config.terminal.cols).toBe(65);
+      expect(config.terminal.cols).toBe(60);
       expect(config.terminal.rows).toBe(24);
       expect(config.terminal.shell).toBe('/bin/bash');
       expect(config.terminal.historyLimit).toBe(50000);
