@@ -94,10 +94,11 @@ export class OpencodeSDKDriver implements AISessionDriver {
     session.messageId = undefined;
     session.assistantMessageIds.clear();
 
-    // Build prompt body with optional model override
+    // Build prompt body — disable question tool (use text Q&A instead)
     const promptBody: any = {
       parts: [{ type: 'text' as const, text: message }],
       agent: 'build',
+      tools: { question: false },
     };
     // Apply model override if set (format: "ProviderName/modelID")
     const modelOverride = modelOverrides.get(conversationId);
