@@ -87,7 +87,7 @@ export function loadConfig(): Config {
       host: getEnvVar('HOST', '0.0.0.0'),
     },
     terminal: {
-      cols: getEnvVarInt('TERMINAL_COLS', 65),
+      cols: getEnvVarInt('TERMINAL_COLS', 60),
       rows: getEnvVarInt('TERMINAL_ROWS', 24),
       shell: getEnvVar('SHELL', '/bin/bash'),
       historyLimit: getEnvVarInt('TERMINAL_HISTORY_LIMIT', 50000),

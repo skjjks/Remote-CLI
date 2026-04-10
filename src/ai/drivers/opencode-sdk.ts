@@ -1,19 +1,18 @@
-// Use /dist/index path because the SDK uses package.json "exports" which
-// requires moduleResolution "node16"/"bundler", but this project uses "node".
-import { createOpencode, type OpencodeClient } from '@opencode-ai/sdk/dist/index';
-import type {
-  Session as OpencodeSessionInfo,
-  Event as OpencodeEvent,
-  GlobalEvent,
-  EventMessagePartUpdated,
-  EventSessionStatus,
-  EventSessionError,
-  TextPart,
-  ToolPart,
-  StepFinishPart,
-} from '@opencode-ai/sdk/dist/index';
 import type { AISessionDriver } from '../types';
 import type { AIManagerCallbacks, AIMetadata } from '../manager';
+
+// @opencode-ai/sdk is ESM-only. We use dynamic import() to load it from CJS.
+// All SDK types are used structurally (duck-typed) to avoid compile-time ESM imports.
+type OpencodeClient = any;
+
+let _sdkModule: any = null;
+async function loadSDK(): Promise<{ createOpencode: (opts?: any) => Promise<{ client: any; server: { url: string; close(): void } }> }> {
+  if (!_sdkModule) {
+    // @ts-ignore -- ESM-only package, dynamic import works at runtime
+    _sdkModule = await import('@opencode-ai/sdk');
+  }
+  return _sdkModule;
+}
 
 interface SessionState {
   conversationId: string;
@@ -28,7 +27,8 @@ let _client: OpencodeClient | null = null;
 
 async function ensureServer(): Promise<OpencodeClient> {
   if (_client) return _client;
-  const result = await createOpencode({ port: 0 });
+  const sdk = await loadSDK();
+  const result = await sdk.createOpencode({ port: 0 });
   _server = result.server;
   _client = result.client;
   console.log(`[OPENCODE-SDK] Server started at ${result.server.url}`);
@@ -53,7 +53,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
       query: options.cwd ? { directory: options.cwd } : undefined,
     });
 
-    const sessionData = result.data as OpencodeSessionInfo | undefined;
+    const sessionData = result.data as any;
     const sessionId = sessionData?.id;
 
     const session: SessionState = {
@@ -103,14 +103,14 @@ export class OpencodeSDKDriver implements AISessionDriver {
       for await (const rawEvent of stream) {
         // The stream yields Event objects (union type) directly.
         // However, with the global endpoint it may be wrapped as GlobalEvent.
-        const event = rawEvent as OpencodeEvent | GlobalEvent;
+        const event = rawEvent as any;
 
         // Unwrap GlobalEvent wrapper if present
-        let payload: OpencodeEvent;
+        let payload: any;
         if ('payload' in event && event.payload) {
-          payload = event.payload as OpencodeEvent;
+          payload = event.payload as any;
         } else {
-          payload = event as OpencodeEvent;
+          payload = event as any;
         }
 
         this.handleEvent(payload);
@@ -122,18 +122,18 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
-  private handleEvent(event: OpencodeEvent): void {
+  private handleEvent(event: any): void {
     switch (event.type) {
       case 'message.part.updated':
-        this.handlePartUpdated(event as EventMessagePartUpdated);
+        this.handlePartUpdated(event as any);
         break;
 
       case 'session.status':
-        this.handleSessionStatus(event as EventSessionStatus);
+        this.handleSessionStatus(event as any);
         break;
 
       case 'session.error':
-        this.handleSessionError(event as EventSessionError);
+        this.handleSessionError(event as any);
         break;
 
       default:
@@ -142,13 +142,13 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
-  private handlePartUpdated(event: EventMessagePartUpdated): void {
+  private handlePartUpdated(event: any): void {
     const { part, delta } = event.properties;
     const session = this.findSessionById(part.sessionID);
     if (!session) return;
 
     if (part.type === 'text') {
-      const textPart = part as TextPart;
+      const textPart = part as any;
       if (delta) {
         // Incremental delta — append
         session.accumulatedText += delta;
@@ -158,7 +158,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
         session.accumulatedText = textPart.text;
       }
     } else if (part.type === 'tool') {
-      const toolPart = part as ToolPart;
+      const toolPart = part as any;
       const toolName = toolPart.tool || 'Tool';
       const state = toolPart.state;
 
@@ -173,7 +173,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
         session.accumulatedText += `\n\n**${toolName}** error: ${state.error}`;
       }
     } else if (part.type === 'step-finish') {
-      const stepPart = part as StepFinishPart;
+      const stepPart = part as any;
       // Track cost from step-finish events
       if (stepPart.cost) {
         // Cost info is available but we accumulate at session end
@@ -191,7 +191,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
-  private handleSessionStatus(event: EventSessionStatus): void {
+  private handleSessionStatus(event: any): void {
     const { sessionID, status } = event.properties;
     const session = this.findSessionById(sessionID);
     if (!session) return;
@@ -211,7 +211,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     // 'busy' and 'retry' are transient — no special handling needed
   }
 
-  private handleSessionError(event: EventSessionError): void {
+  private handleSessionError(event: any): void {
     const { sessionID, error } = event.properties;
     const session = sessionID ? this.findSessionById(sessionID) : undefined;
     if (!session) return;

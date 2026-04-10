@@ -51,7 +51,7 @@ cp .env.example .env
 | `FEISHU_APP_SECRET` | Yes | 飞书应用 App Secret |
 | `ALLOWED_USERS` | Yes | 允许使用的飞书用户 ID，逗号分隔 |
 | `PORT` | No | HTTP 端口（默认 3000） |
-| `TERMINAL_COLS` | No | 终端宽度（默认 80） |
+| `TERMINAL_COLS` | No | 终端宽度（默认 60） |
 | `TERMINAL_ROWS` | No | 终端高度（默认 24） |
 | `CLAUDE_TIMEOUT` | No | Claude 响应超时，毫秒（默认 300000） |
 | `CLAUDE_DEFAULT_MODE` | No | Claude 权限模式：`default` 或 `auto` |
