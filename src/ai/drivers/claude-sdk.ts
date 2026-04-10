@@ -53,11 +53,11 @@ export class ClaudeSDKDriver implements AISessionDriver {
       settingSources: ['project' as any],  // Load .claude/skills, CLAUDE.md, slash commands
     };
 
-    // Apply model override if set
+    // Apply model: override > env default > opus
     const modelOverride = modelOverrides.get(conversationId);
-    if (modelOverride) {
-      sdkOptions.model = modelOverride;
-    }
+    sdkOptions.model = modelOverride
+      || process.env.ANTHROPIC_DEFAULT_OPUS_MODEL
+      || 'claude-opus-4-6';
 
     if (mode === 'auto') {
       sdkOptions.permissionMode = 'bypassPermissions';
