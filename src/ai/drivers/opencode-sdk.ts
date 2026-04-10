@@ -246,51 +246,59 @@ export class OpencodeSDKDriver implements AISessionDriver {
     const session = sessionID ? this.findSessionById(sessionID) : undefined;
     if (!session) return;
 
-    const questionId = props.id; // e.g. "que_xxx"
+    const questionId = props.id;
     const questions = (props.questions || []) as Array<{
       question: string;
       header?: string;
       options?: Array<{ label: string; description?: string }>;
     }>;
 
-    // Store pending question for answer resolution
-    const requestId = `oc-question-${questionId}`;
-    const timer = setTimeout(() => {
-      pendingRequests.delete(requestId);
-    }, 5 * 60 * 1000);
+    if (questions.length === 0) return;
 
-    pendingRequests.set(requestId, {
-      type: 'question',
-      resolve: async (result: any) => {
-        clearTimeout(timer);
-        // Send answer back via tui.control.response
-        try {
-          const client = await ensureServer();
-          await (client as any).tui.control.response({ body: result });
-        } catch (err) {
-          console.warn('[OPENCODE-SDK] Failed to send question response:', err instanceof Error ? err.message : err);
-        }
-      },
-      conversationId: session.conversationId,
-      timer,
-    });
+    // Collect answers one by one, then send all at once
+    const answers: number[] = [];
+    let currentIdx = 0;
 
-    // Send each question as a separate menu card
-    for (const q of questions) {
+    const askNext = () => {
+      if (currentIdx >= questions.length) {
+        // All answered — send response back to opencode
+        this.sendQuestionResponse(answers);
+        return;
+      }
+
+      const q = questions[currentIdx];
       const menuOptions = (q.options || []).map((opt, i) => ({
         label: `${opt.label}${opt.description ? ' — ' + opt.description : ''}`,
         index: i,
         selected: false,
       }));
 
+      const requestId = `oc-question-${questionId}-${currentIdx}`;
+      const timer = setTimeout(() => {
+        pendingRequests.delete(requestId);
+      }, 5 * 60 * 1000);
+
+      pendingRequests.set(requestId, {
+        type: 'question',
+        resolve: (choice: any) => {
+          clearTimeout(timer);
+          answers.push(typeof choice === 'number' ? choice : 0);
+          currentIdx++;
+          askNext();
+        },
+        conversationId: session.conversationId,
+        timer,
+      });
+
+      const qNum = questions.length > 1 ? ` (${currentIdx + 1}/${questions.length})` : '';
       if (menuOptions.length > 0) {
         this.callbacks.onMenu(session.conversationId, {
-          title: `${q.header || 'Question'}: ${q.question}`,
+          title: `${q.header || 'Question'}${qNum}: ${q.question}`,
           options: menuOptions,
-          hint: `Reply with number to answer (question ID: ${questionId})`,
+          hint: '',
         });
       } else {
-        // Open-ended question — show in stream
+        // Open-ended — show in stream, auto-advance
         session.accumulatedText += `\n\n**${q.header || 'Question'}:** ${q.question}`;
         if (session.messageId) {
           this.callbacks.onStreamUpdate(
@@ -300,7 +308,22 @@ export class OpencodeSDKDriver implements AISessionDriver {
             { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
           );
         }
+        answers.push(0);
+        currentIdx++;
+        askNext();
       }
+    };
+
+    askNext();
+  }
+
+  private async sendQuestionResponse(answers: number[]): Promise<void> {
+    try {
+      const client = await ensureServer();
+      await (client as any).tui.control.response({ body: answers });
+      console.log(`[OPENCODE-SDK] Question answered: [${answers.join(', ')}]`);
+    } catch (err) {
+      console.warn('[OPENCODE-SDK] Failed to send question response:', err instanceof Error ? err.message : err);
     }
   }
 
