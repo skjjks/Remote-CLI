@@ -220,4 +220,42 @@ describe('SmartCardBuilder', () => {
       expect(md.content).toMatch(/^```bash\n/);
     });
   });
+
+  describe('hasErrorIndicators (card color)', () => {
+    it('uses red header for output with "Error:"', () => {
+      const output = 'TypeError: Cannot read property of undefined\n    at main.ts:42';
+      const card = builder.buildTerminalOutputCard(output);
+      expect(card.header.template).toBe('red');
+    });
+
+    it('uses red header for "command not found"', () => {
+      const output = 'bash: foo: command not found';
+      const card = builder.buildTerminalOutputCard(output);
+      expect(card.header.template).toBe('red');
+    });
+
+    it('uses red header for "Permission denied"', () => {
+      const output = 'ls: cannot open directory: Permission denied';
+      const card = builder.buildTerminalOutputCard(output);
+      expect(card.header.template).toBe('red');
+    });
+
+    it('uses red header for "No such file or directory"', () => {
+      const output = 'cat: /tmp/missing: No such file or directory';
+      const card = builder.buildTerminalOutputCard(output);
+      expect(card.header.template).toBe('red');
+    });
+
+    it('uses red header for "fatal:"', () => {
+      const output = 'fatal: not a git repository';
+      const card = builder.buildTerminalOutputCard(output);
+      expect(card.header.template).toBe('red');
+    });
+
+    it('keeps blue header for normal output', () => {
+      const output = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 dir1';
+      const card = builder.buildTerminalOutputCard(output);
+      expect(card.header.template).toBe('blue');
+    });
+  });
 });

@@ -154,6 +154,20 @@ export class SmartCardBuilder {
     return 'bash';
   }
 
+  private hasErrorIndicators(output: string): boolean {
+    const lower = output.toLowerCase();
+    const patterns = [
+      'error:',
+      'fatal:',
+      'command not found',
+      'permission denied',
+      'no such file or directory',
+      'exit code',
+      'exited with',
+    ];
+    return patterns.some(p => lower.includes(p));
+  }
+
   buildInitCard(sessionId: string, model: string): FeishuCardV2 {
     return this.card('Claude Session Started', 'blue', [
       { tag: 'markdown', content: `**Session:** \`${sessionId}\`\n**Model:** ${model}` },
@@ -344,7 +358,8 @@ export class SmartCardBuilder {
     if (footerParts.length > 0) {
       elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: footerParts.join('  ·  ') }] });
     }
-    return this.card(title, 'blue', elements);
+    const color = this.hasErrorIndicators(cleaned) ? 'red' : 'blue';
+    return this.card(title, color, elements);
   }
 
   buildMenuCard(title: string, options: Array<{ label: string; index: number; selected: boolean }>, hint: string): FeishuCardV2 {
