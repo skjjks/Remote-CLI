@@ -6,7 +6,7 @@ import * as tmux from './terminal/tmux';
 import { isInteractiveProgram, getShortcutKey } from './terminal/interactive';
 import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, extractCommandOutput } from './handlers/terminal';
-import { handleClaudeCommand, handleCd, getClaudeManager } from './handlers/ai';
+import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory } from './handlers/session';
 // Note: handleCardAction is in ./handlers/card-action.ts but unused in WebSocket mode
 // (card button callbacks require HTTP webhook mode)
@@ -47,6 +47,10 @@ async function handleCommand(
         return;
       case 'claude':
         await handleClaudeCommand(conversationId, args.join(' '));
+        return;
+      case 'opencode':
+      case 'oc':
+        await handleOpencodeCommand(conversationId, args.join(' '));
         return;
       case 'new':
         await handleNewSession(conversationId);
@@ -126,6 +130,8 @@ async function handleCommand(
     if (session?.type === 'claude') {
       // Route through handleClaudeCommand which handles reconnection
       handleClaudeCommand(conversationId, trimmedMessage);
+    } else if (session?.type === 'opencode') {
+      handleOpencodeCommand(conversationId, trimmedMessage);
     } else if (session?.type === 'terminal' && session.tmuxName) {
       const cmd = trimmedMessage;
       const sid = activeSessionId;
@@ -202,6 +208,20 @@ async function main(): Promise<void> {
     }
   }
 
+  // Reconnect opencode tmux sessions
+  const opencodeManager = getOpencodeManager();
+  for (const session of allSessions) {
+    if (session.type === 'opencode' && session.tmuxName && session.conversationId) {
+      const ok = await opencodeManager.reconnectSession(session.conversationId, session.tmuxName);
+      if (ok) {
+        activeSessions.set(session.conversationId, session.id);
+      } else {
+        console.log(`[INIT] Opencode session ${session.id} (${session.tmuxName}) no longer exists, removing`);
+        await sessionManager.killSession(session.id).catch(err => console.warn('[INIT] Failed to kill stale session:', err.message || err));
+      }
+    }
+  }
+
   // Create event dispatcher
   const eventDispatcher = new lark.EventDispatcher({
     verificationToken: '',
@@ -244,7 +264,7 @@ async function main(): Promise<void> {
   await wsClient.start({ eventDispatcher });
 
   console.log('Feishu Terminal Bot connected via WebSocket');
-  console.log('Commands: !sh, !claude, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
+  console.log('Commands: !sh, !claude, !opencode, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
 
   // Periodic cleanup of stale sessions (every hour)
@@ -261,6 +281,8 @@ async function main(): Promise<void> {
     try {
       await claudeManager.killAll();
       console.log('[SHUTDOWN] Claude sessions cleaned up');
+      await opencodeManager.killAll();
+      console.log('[SHUTDOWN] Opencode sessions cleaned up');
     } catch (err) {
       console.warn('[SHUTDOWN] Error cleaning up Claude sessions:', err instanceof Error ? err.message : err);
     }

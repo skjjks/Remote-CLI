@@ -270,6 +270,7 @@ export class SmartCardBuilder {
       '| --- | --- |',
       '| `!help` | Show this help |',
       '| `!claude <prompt>` | Start/send to Claude |',
+      '| `!opencode <prompt>` / `!oc` | Start/send to opencode |',
       '| `!sh <cmd>` | Run shell command |',
       '| `!new` | New Claude session |',
       '| `!list` | List all sessions |',

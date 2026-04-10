@@ -2,7 +2,7 @@ import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
 import { activeSessions, commandHistory } from '../state';
-import { getClaudeManager } from './ai';
+import { getClaudeManager, getOpencodeManager } from './ai';
 
 // ── Session management handlers ──
 
@@ -96,6 +96,9 @@ export async function handleKillSession(conversationId: string, idStr?: string):
   } else if (session.type === 'claude') {
     const claudeManager = getClaudeManager();
     await claudeManager.killSession(conversationId);
+  } else if (session.type === 'opencode') {
+    const opencodeManager = getOpencodeManager();
+    await opencodeManager.killSession(conversationId);
   }
 
   await sessionManager.killSession(sessionId);
@@ -123,6 +126,10 @@ export async function handleInterrupt(conversationId: string): Promise<void> {
     const claudeManager = getClaudeManager();
     await claudeManager.interruptSession(conversationId);
     await feishuBot.sendText(conversationId, 'Claude interrupted');
+  } else if (session?.type === 'opencode') {
+    const opencodeManager = getOpencodeManager();
+    await opencodeManager.interruptSession(conversationId);
+    await feishuBot.sendText(conversationId, 'Opencode interrupted');
   } else if (session?.type === 'terminal' && session.tmuxName) {
     await tmux.sendKeys(session.tmuxName, 'C-c');
     await feishuBot.sendText(conversationId, 'Sent Ctrl-C');
