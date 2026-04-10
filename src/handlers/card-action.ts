@@ -11,7 +11,7 @@ import {
   PERMIT_ALWAYS,
 } from '../bot/card';
 import { activeSessions, pendingPrompts } from '../state';
-import { getClaudeManager } from './claude';
+import { getClaudeManager } from './ai';
 
 // ── Card action handlers ──
 
