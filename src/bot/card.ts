@@ -132,7 +132,7 @@ export class SmartCardBuilder {
     // Backend name + session ID for title
     const backendName = footer?.backend === 'opencode' ? 'Opencode' : 'Claude';
     const sessionTag = footer?.sessionId ? ` #${footer.sessionId.slice(-6)}` : '';
-    const color = footer?.backend === 'opencode' ? 'green' : 'purple';
+    const color = footer?.backend === 'opencode' ? 'grey' : 'orange';
 
     // Dynamic title based on status
     const baseTitle = `${backendName}${sessionTag}`;
@@ -239,7 +239,7 @@ export class SmartCardBuilder {
     if (footerParts.length > 0) {
       elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: footerParts.join('  ·  ') }] });
     }
-    return this.card(title, 'grey', elements);
+    return this.card(title, 'blue', elements);
   }
 
   buildMenuCard(title: string, options: Array<{ label: string; index: number; selected: boolean }>, hint: string): FeishuCardV2 {

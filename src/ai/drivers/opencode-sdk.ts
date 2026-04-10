@@ -56,6 +56,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     });
 
     const sessionData = result.data as any;
+    console.log('[OPENCODE-SDK] session.create result:', JSON.stringify(sessionData, null, 2)?.slice(0, 500));
     const sessionId = sessionData?.id;
 
     const session: SessionState = {
