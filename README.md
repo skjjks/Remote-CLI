@@ -40,7 +40,7 @@
 
 - `!sh <command>` — 执行任意 shell 命令
 - 自动检测 vim/nano/htop 等交互式程序，切换原始输入模式
-- `!esc` / `!enter` / `!tab` / `!up` / `!down` — 快捷键发送
+- `!esc` / `!enter` / `!tab` / `!up` / `!down` / `!backspace` — 快捷键发送
 - `!screen` — 随时查看终端当前画面
 - `!raw` / `!raw off` — 手动切换输入模式
 
@@ -62,6 +62,14 @@ AI 回复以飞书卡片呈现，信息丰富：
 - 工具权限确认以飞书卡片交互
 - Markdown 表格自动转换为飞书原生表格组件
 - Claude 橙色、opencode 灰色、终端蓝色 — 一眼区分
+
+### 终端输出优化
+
+- ANSI 转义序列自动清理 — 彩色命令输出不再显示乱码
+- 语法高亮检测 — JSON / diff / YAML 输出自动匹配语法高亮
+- 错误标色 — 输出包含错误信息时卡片标题变红
+- 短输出优化 — 3 行以内的简短输出以加粗文本展示，不用代码块
+- 执行耗时 — 卡片底部显示命令执行时间
 
 ## 快速开始
 
@@ -98,7 +106,7 @@ cp .env.example .env
 | `ALLOWED_USERS` | Yes | 允许使用的飞书用户 ID，逗号分隔 | — |
 | `ANTHROPIC_API_KEY` | Yes | Anthropic API Key | — |
 | `ANTHROPIC_BASE_URL` | No | API 代理地址 | — |
-| `TERMINAL_COLS` | No | 终端宽度 | `80` |
+| `TERMINAL_COLS` | No | 终端宽度 | `200` |
 | `TERMINAL_ROWS` | No | 终端高度 | `24` |
 | `CLAUDE_TIMEOUT` | No | Claude 响应超时（ms） | `300000` |
 | `CLAUDE_DEFAULT_MODE` | No | 权限模式 `default` / `auto` | `default` |
@@ -147,6 +155,7 @@ npm run deploy
 | `!screen` / `!sc` | 查看当前终端屏幕 |
 | `!key <key>` | 发送特殊键 |
 | `!esc` / `!enter` / `!tab` | 快捷键 |
+| `!backspace` / `!bs` | 退格键 |
 | `!up` / `!down` / `!left` / `!right` | 方向键 |
 | `!ctrl+c` / `!ctrl+d` / `!ctrl+z` | Ctrl 组合键 |
 | `!raw` | 强制原始输入模式 |

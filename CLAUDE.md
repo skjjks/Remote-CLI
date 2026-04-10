@@ -1,5 +1,24 @@
 # Project Instructions
 
+## Project Overview
+
+Remote CLI is a Feishu (Lark) Bot for remote terminal control and AI coding assistant interaction. Key modules:
+
+- `src/bot/card.ts` — Feishu card builder (SmartCardBuilder) with ANSI stripping, syntax highlight detection, error coloring, short output optimization
+- `src/bot/feishu.ts` — Feishu API client (WebSocket mode, no card action callbacks)
+- `src/handlers/terminal.ts` — Shell command execution via tmux, output extraction
+- `src/handlers/ai.ts` — Claude/opencode command routing
+- `src/ai/drivers/claude-sdk.ts` — Claude Agent SDK streaming driver
+- `src/ai/drivers/opencode-sdk.ts` — opencode SDK event loop driver
+- `src/terminal/interactive.ts` — Interactive program detection + shortcut key mapping
+
+## Development
+
+- **Test framework:** vitest (`npm test`)
+- **Build:** `tsc` (`npm run build`)
+- **Deploy:** `npm run deploy` (PM2 cluster mode)
+- **Terminal width:** 200 columns default — wide enough for pm2 tables
+
 ## Gstack
 
 Use the `/browse` skill from gstack for all web browsing. Never use `mcp__claude-in-chrome__*` tools.
