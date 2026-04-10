@@ -1,164 +1,260 @@
-# Remote CLI
+<p align="center">
+  <h1 align="center">Remote CLI</h1>
+  <p align="center">
+    <strong>在飞书中远程操控终端和 AI 编码助手</strong>
+  </p>
+  <p align="center">
+    <a href="#快速开始">快速开始</a> &bull;
+    <a href="#功能特性">功能特性</a> &bull;
+    <a href="#命令参考">命令参考</a> &bull;
+    <a href="#架构设计">架构设计</a>
+  </p>
+</p>
 
-通过飞书聊天远程控制终端和 AI 编码助手的 Bot。支持 Claude Code 和 opencode 双后端。
+---
 
-## 功能
+**Remote CLI** 是一个飞书 Bot，让你在手机或电脑的飞书聊天窗口中远程控制服务器终端、与 AI 编码助手（Claude Code / opencode）对话。就像把 VS Code Terminal + AI Copilot 装进了飞书。
 
-**三模式运行：**
-- **Terminal 模式** — 在飞书中执行 shell 命令，支持交互式程序（vim、htop、less 等）
-- **Claude 模式** — 与 Claude Code 对话，支持流式输出和智能卡片
-- **Opencode 模式** — 与 opencode 对话，同样的 tmux 架构，可随时切换
+## 为什么需要它？
 
-**交互式终端：**
-- 自动检测 vim/nano/htop 等交互式程序，切换为原始输入模式（不追加 Enter）
-- `!esc`、`!enter`、`!tab` 等快捷键命令
-- `!screen` 查看当前终端屏幕
-- `!raw` / `!raw off` 手动切换原始模式
+- 在手机上随时查看服务器状态、执行命令
+- 随时随地与 Claude Code / opencode 对话，让 AI 帮你写代码、审查 PR、修 Bug
+- 不需要 SSH 客户端，一个飞书就够了
+- 支持 vim、htop 等交互式程序的远程操作
 
-**会话管理：**
-- 多会话支持，tmux 持久化
-- Bot 重启后自动重连
+## 功能特性
+
+### AI 双后端
+
+同时支持 **Claude Code** 和 **opencode** 两个 AI 编码助手，通过 SDK 获取结构化输出：
+
+- `!claude` — 使用 Claude Agent SDK，支持 skills、工具权限确认
+- `!opencode` — 使用 opencode SDK，支持多 provider 模型切换
+- `!model` — 随时切换模型（opus / sonnet / haiku / gemini / gpt-5 等）
+- 流式输出 — AI 回复实时更新飞书卡片
+- 会话恢复 — Bot 重启后自动恢复上次对话
+
+### 远程终端
+
+通过飞书聊天执行 shell 命令，支持完整的终端交互：
+
+- `!sh <command>` — 执行任意 shell 命令
+- 自动检测 vim/nano/htop 等交互式程序，切换原始输入模式
+- `!esc` / `!enter` / `!tab` / `!up` / `!down` — 快捷键发送
+- `!screen` — 随时查看终端当前画面
+- `!raw` / `!raw off` — 手动切换输入模式
+
+### 会话管理
+
+- `!list` — 查看所有活跃会话
+- `!switch <id>` — 切换会话
+- `!kill <id> [id2...]` / `!kill all` — 批量终止会话
+- `!history` — 查看命令历史
 - 24 小时不活跃自动清理
-- 命令历史记录
+- 会话持久化，Bot 重启后自动重连
+
+### 智能卡片
+
+AI 回复以飞书卡片呈现，信息丰富：
+
+- 卡片标题显示后端名称 + Session ID + 当前状态
+- 卡片底部显示模型、工作路径、Token 消耗、费用
+- 工具权限确认以飞书卡片交互
+- Markdown 表格自动转换为飞书原生表格组件
+- Claude 橙色、opencode 灰色、终端蓝色 — 一眼区分
 
 ## 快速开始
 
 ### 前置条件
 
-- Node.js >= 18
-- tmux
-- 飞书开放平台应用（需要 Bot 能力）
+- **Node.js** >= 18
+- **tmux**（终端模式使用）
+- **飞书开放平台应用**（需要 Bot 能力 + WebSocket 模式）
+- **Anthropic API Key**（Claude 使用）
+- **opencode**（可选，opencode 模式使用）
 
 ### 安装
 
 ```bash
-git clone <repo-url>
+git clone https://github.com/your-username/remote-cli.git
 cd remote-cli
 npm install
 ```
 
 ### 配置
 
-复制环境变量模板并填写：
-
 ```bash
 cp .env.example .env
+# 编辑 .env 填入你的飞书应用凭据和 API Key
 ```
 
-| 变量 | 必填 | 说明 |
-|------|------|------|
-| `FEISHU_APP_ID` | Yes | 飞书应用 App ID |
-| `FEISHU_APP_SECRET` | Yes | 飞书应用 App Secret |
-| `ALLOWED_USERS` | Yes | 允许使用的飞书用户 ID，逗号分隔 |
-| `PORT` | No | HTTP 端口（默认 3000） |
-| `TERMINAL_COLS` | No | 终端宽度（默认 60） |
-| `TERMINAL_ROWS` | No | 终端高度（默认 24） |
-| `CLAUDE_TIMEOUT` | No | Claude 响应超时，毫秒（默认 300000） |
-| `CLAUDE_DEFAULT_MODE` | No | Claude 权限模式：`default` 或 `auto` |
-| `OPENCODE_TIMEOUT` | No | opencode 响应超时，毫秒（默认 300000） |
-| `OPENCODE_DEFAULT_MODE` | No | opencode 模式：`default` 或 `auto`（auto = --pure） |
+<details>
+<summary><b>完整配置项</b></summary>
 
-### 运行
+| 变量 | 必填 | 说明 | 默认值 |
+|------|:----:|------|--------|
+| `FEISHU_APP_ID` | Yes | 飞书应用 App ID | — |
+| `FEISHU_APP_SECRET` | Yes | 飞书应用 App Secret | — |
+| `ALLOWED_USERS` | Yes | 允许使用的飞书用户 ID，逗号分隔 | — |
+| `ANTHROPIC_API_KEY` | Yes | Anthropic API Key | — |
+| `ANTHROPIC_BASE_URL` | No | API 代理地址 | — |
+| `TERMINAL_COLS` | No | 终端宽度 | `80` |
+| `TERMINAL_ROWS` | No | 终端高度 | `24` |
+| `CLAUDE_TIMEOUT` | No | Claude 响应超时（ms） | `300000` |
+| `CLAUDE_DEFAULT_MODE` | No | 权限模式 `default` / `auto` | `default` |
+| `OPENCODE_TIMEOUT` | No | opencode 响应超时（ms） | `300000` |
+
+</details>
+
+### 启动
 
 ```bash
 # 开发模式
 npm run dev
 
-# 生产模式
-npm run build
-npm start
-```
-
-## 生产部署（PM2）
-
-使用 PM2 管理进程，支持自动重启、日志管理：
-
-```bash
-# 首次部署（构建 + 启动）
+# 生产部署（PM2）
 npm run deploy
-
-# 查看状态
-npm run pm2:status
-
-# 查看日志
-npm run pm2:logs
-
-# 重启
-npm run pm2:restart
-
-# 停止
-npm run pm2:stop
-
-# 开机自启（运行后按提示操作）
-pm2 startup
-pm2 save
 ```
 
-确保 `.env` 文件已配置好后再部署。
+### 验证
 
-## 命令
+在飞书中给 Bot 发消息：
+
+```
+!sh echo hello world
+```
+
+如果返回 `hello world`，恭喜 -- 一切就绪！
+
+## 命令参考
+
+### AI 交互
+
+| 命令 | 说明 |
+|------|------|
+| `!claude <prompt>` | 发送消息给 Claude |
+| `!opencode <prompt>` / `!oc` | 发送消息给 opencode |
+| `!model` | 查看可用模型列表 |
+| `!model <name>` | 切换模型（如 `!model sonnet`） |
+| `!model reset` | 恢复默认模型 |
+| 直接发文字 | 发送到当前活跃的 AI 会话 |
+
+### 终端操作
 
 | 命令 | 说明 |
 |------|------|
 | `!sh <command>` | 执行 shell 命令 |
-| `!claude <prompt>` | 发送消息给 Claude |
-| `!opencode <prompt>` / `!oc` | 发送消息给 opencode |
+| `!screen` / `!sc` | 查看当前终端屏幕 |
+| `!key <key>` | 发送特殊键 |
+| `!esc` / `!enter` / `!tab` | 快捷键 |
+| `!up` / `!down` / `!left` / `!right` | 方向键 |
+| `!ctrl+c` / `!ctrl+d` / `!ctrl+z` | Ctrl 组合键 |
+| `!raw` | 强制原始输入模式 |
+| `!raw off` | 恢复自动检测 |
+
+### 会话管理
+
+| 命令 | 说明 |
+|------|------|
 | `!new` | 创建新 Claude 会话 |
 | `!list` | 列出所有会话 |
 | `!switch <id>` | 切换会话 |
-| `!kill <id>` | 终止会话 |
+| `!kill <id> [id2...]` | 终止一个或多个会话 |
+| `!kill all` | 终止所有会话 |
 | `!interrupt` | 中断当前操作（Ctrl+C） |
-| `!key <key>` | 发送特殊键（escape, ctrl+c 等） |
-| `!esc` / `!enter` / `!tab` | 快捷键 |
-| `!up` / `!down` / `!left` / `!right` | 方向键 |
-| `!raw` | 强制进入原始输入模式 |
-| `!raw off` | 恢复自动检测 |
-| `!screen` | 查看当前终端屏幕 |
 | `!history` | 查看命令历史 |
-| `!cd <path>` | 切换 Claude 工作目录 |
-| `!mode auto\|default` | 切换 Claude 权限模式 |
+| `!cd <path>` | 切换 AI 工作目录 |
+| `!mode auto\|default` | 切换权限模式 |
 
-直接发消息（不带 `!` 前缀）会发送到当前活跃会话（Claude 或 opencode）。
-
-## 架构
+## 架构设计
 
 ```
-飞书 WebSocket ──→ 消息路由 (index.ts)
-                      ├──→ Terminal 处理器 (handlers/terminal.ts)
-                      │      └── tmux 会话
-                      ├──→ AI 处理器 (handlers/ai.ts)
-                      │      ├── Claude Code tmux 会话
-                      │      └── opencode tmux 会话
-                      ├──→ 会话管理 (handlers/session.ts)
-                      └──→ 卡片动作 (handlers/card-action.ts)
+                          ┌─────────────────────────────────┐
+                          │         飞书 WebSocket           │
+                          └──────────────┬──────────────────┘
+                                         │
+                          ┌──────────────▼──────────────────┐
+                          │       消息路由 (index.ts)         │
+                          └──┬───────┬───────┬──────────────┘
+                             │       │       │
+                ┌────────────▼─┐ ┌───▼────┐ ┌▼──────────────┐
+                │  Terminal     │ │   AI   │ │    Session     │
+                │  Handler     │ │Handler │ │    Manager     │
+                └──────┬───────┘ └───┬────┘ └───────────────┘
+                       │             │
+                ┌──────▼───────┐ ┌───▼──────────────────────┐
+                │    tmux      │ │     AISessionDriver      │
+                │   (shell)    │ │  ┌─────────┐ ┌─────────┐ │
+                └──────────────┘ │  │ Claude  │ │opencode │ │
+                                 │  │  SDK    │ │  SDK    │ │
+                                 │  └─────────┘ └─────────┘ │
+                                 └──────────────────────────┘
 ```
 
-**核心模块：**
+### 核心模块
 
-| 目录 | 说明 |
-|------|------|
-| `src/index.ts` | 消息路由 + 入口 |
-| `src/state.ts` | 共享状态 |
-| `src/config.ts` | 环境变量配置 |
-| `src/handlers/` | 命令处理器 |
-| `src/bot/` | 飞书 API 客户端 + 卡片构建 |
-| `src/terminal/` | tmux 封装 + 交互检测 |
-| `src/claude/` | Claude Code 进程管理 |
+| 模块 | 路径 | 职责 |
+|------|------|------|
+| 消息路由 | `src/index.ts` | 飞书消息分发、命令解析 |
+| AI 驱动 | `src/ai/drivers/` | Claude SDK / opencode SDK 适配 |
+| AI 管理 | `src/ai/manager.ts` | 统一接口、会话生命周期 |
+| 终端处理 | `src/handlers/terminal.ts` | shell 命令、交互检测、快捷键 |
+| 卡片构建 | `src/bot/card.ts` | 飞书卡片模板、表格转换 |
+| 飞书客户端 | `src/bot/feishu.ts` | API 封装、消息收发 |
+| 会话持久化 | `src/terminal/session.ts` | 会话存储、重连、清理 |
+
+## 生产部署
+
+### PM2（推荐）
+
+```bash
+# 首次部署
+npm run deploy
+
+# 日常操作
+npm run pm2:status    # 查看状态
+npm run pm2:logs      # 查看日志
+npm run pm2:restart   # 重启
+npm run pm2:stop      # 停止
+
+# 开机自启
+pm2 startup && pm2 save
+```
 
 ## 开发
 
 ```bash
-# 运行测试
-npm test
+npm test              # 运行测试
+npm run test:watch    # 监听模式
+npm run lint          # 代码检查
+npm run build         # 构建
+```
 
-# 监听模式
-npm run test:watch
+### 项目结构
 
-# 代码检查
-npm run lint
-
-# 构建
-npm run build
+```
+src/
+  index.ts              # 入口 + 消息路由
+  state.ts              # 共享状态
+  config.ts             # 环境变量配置
+  ai/
+    manager.ts           # AI 会话管理器
+    types.ts             # 接口定义
+    drivers/
+      claude-sdk.ts      # Claude Agent SDK 驱动
+      opencode-sdk.ts    # opencode SDK 驱动
+  bot/
+    card.ts              # 飞书卡片构建
+    feishu.ts            # 飞书 API 客户端
+  handlers/
+    ai.ts                # AI 命令处理
+    terminal.ts          # 终端命令处理
+    session.ts           # 会话管理命令
+    card-action.ts       # 卡片交互处理
+  terminal/
+    tmux.ts              # tmux 封装
+    session.ts           # 会话持久化
+    interactive.ts       # 交互式程序检测
 ```
 
 ## License
