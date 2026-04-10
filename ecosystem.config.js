@@ -10,6 +10,9 @@ module.exports = {
     max_memory_restart: '500M',
     env: {
       NODE_ENV: 'production',
+      // Inherit API keys from system environment
+      ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
+      ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
     },
     log_date_format: 'YYYY-MM-DD HH:mm:ss',
     error_file: 'logs/error.log',
