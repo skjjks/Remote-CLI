@@ -1,11 +1,12 @@
 import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager, SessionInfo } from '../terminal/session';
-import { ClaudeManager, ClaudeManagerCallbacks } from '../claude/manager';
+import { AIManager, AIManagerCallbacks } from '../ai/manager';
+import { CLAUDE_BACKEND } from '../ai/backend';
 import { activeSessions, smartCard } from '../state';
 
 // ── Claude callbacks ──
 
-const claudeCallbacks: ClaudeManagerCallbacks = {
+const claudeCallbacks: AIManagerCallbacks = {
   onStreamStart: async (conversationId) => {
     const feishuBot = getFeishuBot();
     const card = smartCard.buildTextCard('thinking...');
@@ -39,10 +40,10 @@ const claudeCallbacks: ClaudeManagerCallbacks = {
 
 // ── Lazy managers ──
 
-let _claudeManager: ClaudeManager | null = null;
-export function getClaudeManager(): ClaudeManager {
+let _claudeManager: AIManager | null = null;
+export function getClaudeManager(): AIManager {
   if (!_claudeManager) {
-    _claudeManager = new ClaudeManager(claudeCallbacks);
+    _claudeManager = new AIManager(claudeCallbacks, CLAUDE_BACKEND);
   }
   return _claudeManager;
 }

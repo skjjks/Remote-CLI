@@ -1,8 +1,9 @@
 import { getConfig } from '../config';
 import * as tmux from '../terminal/tmux';
+import { AIBackendConfig } from './backend';
 
 /**
- * Claude Manager — runs Claude Code in a tmux session (interactive mode).
+ * AI Manager — runs an AI CLI (Claude, opencode, etc.) in a tmux session (interactive mode).
  * Uses tmux send-keys to send messages, capture-pane to read output.
  * This enables true multi-turn conversations.
  */
@@ -19,7 +20,7 @@ export interface DetectedMenu {
   hint: string;  // e.g. "Enter to confirm · Esc to exit"
 }
 
-export interface ClaudeMetadata {
+export interface AIMetadata {
   model?: string;
   cwd?: string;
   context?: string;
@@ -27,45 +28,48 @@ export interface ClaudeMetadata {
   costUsd?: number;
 }
 
-export interface ClaudeManagerCallbacks {
+export interface AIManagerCallbacks {
   onStreamStart: (conversationId: string) => Promise<string | undefined>;  // returns messageId
-  onStreamUpdate: (conversationId: string, messageId: string, content: string, metadata?: ClaudeMetadata) => void;
-  onStreamEnd: (conversationId: string, messageId: string, content: string, metadata: ClaudeMetadata) => void;
+  onStreamUpdate: (conversationId: string, messageId: string, content: string, metadata?: AIMetadata) => void;
+  onStreamEnd: (conversationId: string, messageId: string, content: string, metadata: AIMetadata) => void;
   onMenu: (conversationId: string, menu: DetectedMenu) => void;
   onError: (conversationId: string, error: string) => void;
 }
 
-interface ClaudeSession {
+interface AISession {
   tmuxName: string;
   conversationId: string;
   lastCaptureContent: string;  // Track content to send only new output
   pollTimeoutId?: ReturnType<typeof setTimeout>;  // Track active poll for cleanup
 }
 
-export class ClaudeManager {
-  private sessions: Map<string, ClaudeSession> = new Map();
-  private callbacks: ClaudeManagerCallbacks;
+export class AIManager {
+  private sessions: Map<string, AISession> = new Map();
+  private callbacks: AIManagerCallbacks;
   private config: ReturnType<typeof getConfig>;
+  private backend: AIBackendConfig;
 
-  constructor(callbacks: ClaudeManagerCallbacks) {
+  constructor(callbacks: AIManagerCallbacks, backend: AIBackendConfig) {
     this.callbacks = callbacks;
     this.config = getConfig();
+    this.backend = backend;
   }
 
   /**
-   * Start a new Claude tmux session.
-   * Launches `claude` (interactive mode) in a detached tmux session.
+   * Start a new AI tmux session.
+   * Launches the AI CLI (interactive mode) in a detached tmux session.
    */
   async startSession(conversationId: string, tmuxName: string, cwd?: string): Promise<void> {
     const config = this.config;
-    const mode = config.claude.defaultMode;
+    const backendConfig = this.backend.name === 'opencode' ? config.opencode : config.claude;
+    const mode = backendConfig.defaultMode;
 
-    let shellCmd = 'claude';
+    let shellCmd = this.backend.startCommand;
     if (mode === 'auto') {
-      shellCmd = 'claude --dangerously-skip-permissions';
+      shellCmd = this.backend.startCommandAuto;
     }
 
-    // If cwd specified, cd there first then launch claude
+    // If cwd specified, cd there first then launch the AI CLI
     if (cwd) {
       await tmux.createSession(
         tmuxName,
@@ -84,10 +88,10 @@ export class ClaudeManager {
       );
     }
 
-    // Wait for claude to start
+    // Wait for the AI CLI to start
     await new Promise(resolve => setTimeout(resolve, this.config.timing.claudeStartupWait));
 
-    const session: ClaudeSession = {
+    const session: AISession = {
       tmuxName,
       conversationId,
       lastCaptureContent: '',
@@ -97,7 +101,7 @@ export class ClaudeManager {
     try {
       session.lastCaptureContent = await tmux.capturePane(tmuxName);
     } catch (err) {
-      console.warn('[CLAUDE] Failed to capture initial pane content:', err instanceof Error ? err.message : err);
+      console.warn(`${this.backend.logPrefix} Failed to capture initial pane content:`, err instanceof Error ? err.message : err);
       session.lastCaptureContent = '';
     }
 
@@ -105,12 +109,12 @@ export class ClaudeManager {
   }
 
   /**
-   * Send a message to the Claude session and capture the response.
+   * Send a message to the AI session and capture the response.
    */
   async sendMessage(conversationId: string, message: string): Promise<void> {
     const session = this.sessions.get(conversationId);
     if (!session) {
-      this.callbacks.onError(conversationId, 'No active Claude session');
+      this.callbacks.onError(conversationId, `No active ${this.backend.name} session`);
       return;
     }
 
@@ -119,7 +123,7 @@ export class ClaudeManager {
     try {
       beforeContent = await tmux.capturePane(session.tmuxName);
     } catch (err) {
-      console.warn('[CLAUDE] Failed to capture pane before send:', err instanceof Error ? err.message : err);
+      console.warn(`${this.backend.logPrefix} Failed to capture pane before send:`, err instanceof Error ? err.message : err);
       beforeContent = '';
     }
 
@@ -128,7 +132,7 @@ export class ClaudeManager {
     await tmux.sendLiteralKeys(session.tmuxName, message);
     await tmux.sendKeys(session.tmuxName, 'Enter');
 
-    // Poll for new output — Claude needs time to respond
+    // Poll for new output — the AI CLI needs time to respond
     this.pollForResponse(conversationId, session, beforeContent);
   }
 
@@ -138,11 +142,11 @@ export class ClaudeManager {
    */
   private pollForResponse(
     conversationId: string,
-    session: ClaudeSession,
+    session: AISession,
     beforeContent: string
   ): void {
     const POLL_INTERVAL = this.config.timing.claudePollInterval;
-    const timeout = this.config.claude.timeout;
+    const timeout = this.backend.name === 'opencode' ? this.config.opencode.timeout : this.config.claude.timeout;
     const startTime = Date.now();
     let lastRawContent = beforeContent;
     let lastSentContent = '';
@@ -152,7 +156,7 @@ export class ClaudeManager {
     const poll = async () => {
       if (Date.now() - startTime > timeout) {
         session.pollTimeoutId = undefined;
-        this.callbacks.onError(conversationId, 'Claude response timed out');
+        this.callbacks.onError(conversationId, `${this.backend.name} response timed out`);
         return;
       }
 
@@ -191,7 +195,7 @@ export class ClaudeManager {
           stableCount++;
         }
 
-        // Stable for 3 polls (3 seconds) and we have content → done
+        // Stable for 3 polls (3 seconds) and we have content -> done
         if (stableCount >= 3 && currentContent !== beforeContent) {
           session.lastCaptureContent = currentContent;
           session.pollTimeoutId = undefined;
@@ -259,10 +263,10 @@ export class ClaudeManager {
 
       if (!trimmed) { cleaned.push(''); continue; }
 
-      // Skip separator lines (────)
+      // Skip separator lines (----)
       if (/^[─━═╌]{4,}/.test(trimmed)) continue;
 
-      // Skip empty input prompt (just ❯ with nothing after)
+      // Skip empty input prompt (just > with nothing after)
       if (/^❯\s*$/.test(trimmed)) continue;
 
       // Skip Claude logo (block drawing characters only)
@@ -272,13 +276,13 @@ export class ClaudeManager {
       if (/git:\(/.test(trimmed)) continue;
       if (/\}@\.@\{/.test(trimmed)) continue;
 
-      // Clean: remove leading ❯ (input echo)
+      // Clean: remove leading > (input echo)
       let cleanLine = line;
       if (/^\s*❯\s+/.test(cleanLine)) {
         cleanLine = cleanLine.replace(/^\s*❯\s+/, '');
       }
 
-      // Clean: remove leading ● (response prefix)
+      // Clean: remove leading bullet (response prefix)
       if (/^\s*●\s/.test(cleanLine)) {
         cleanLine = cleanLine.replace(/^\s*●\s/, '');
       }
@@ -313,9 +317,9 @@ export class ClaudeManager {
    * Extract model, cwd, context from the full captured pane.
    * Parses Claude Code's status bar and context line.
    */
-  private extractMetadata(content: string): ClaudeMetadata {
+  private extractMetadata(content: string): AIMetadata {
     const lines = content.split('\n');
-    const metadata: ClaudeMetadata = {};
+    const metadata: AIMetadata = {};
 
     for (const line of lines) {
       const trimmed = line.trim();
@@ -369,7 +373,7 @@ export class ClaudeManager {
       // Churning / processing
       if (/^✻/.test(trimmed)) return 'processing';
 
-      // Waiting for input (❯ prompt)
+      // Waiting for input (> prompt)
       if (/^❯\s*$/.test(trimmed)) return 'done';
     }
 
@@ -404,13 +408,13 @@ export class ClaudeManager {
         continue;
       }
 
-      // Detect end of tool output: a line starting with ● or ✻ (next section)
+      // Detect end of tool output: a line starting with bullet or asterisk (next section)
       if (inCodeBlock && /^[●✻]/.test(trimmed)) {
         result.push('```');
         inCodeBlock = false;
       }
 
-      // Detect plain text response lines (● prefix was already stripped)
+      // Detect plain text response lines (bullet prefix was already stripped)
       // These should not be in a code block
       if (inCodeBlock && !trimmed.startsWith('⎿') && !trimmed.match(/^\s/) && !trimmed.match(/^[-+\d]/) && trimmed.length > 0) {
         // Looks like a natural language line, close code block
@@ -442,7 +446,7 @@ export class ClaudeManager {
     for (let i = 0; i < lines.length; i++) {
       const trimmed = lines[i].trim();
 
-      // Detect numbered options: "1. Label" or "❯ 1. Label" or "> 1. Label"
+      // Detect numbered options: "1. Label" or "> 1. Label" or "> 1. Label"
       const optMatch = trimmed.match(/^(?:[❯>]\s*)?(\d+)\.\s+(.+?)(?:\s+·\s+.*)?$/);
       if (optMatch) {
         if (firstOptionIdx < 0) firstOptionIdx = i;
@@ -485,7 +489,7 @@ export class ClaudeManager {
         if (/^[▐▛▜▌▝▘█░▒▓\s]+$/.test(trimmed)) break;
         if (/git:\(/.test(trimmed)) break;
         if (/\}@\.@\{/.test(trimmed)) break;
-        // Clean ● prefix
+        // Clean bullet prefix
         let clean = trimmed.replace(/^[●⎿]\s*/, '');
         if (clean) contextLines.unshift(clean);
         // Take at most 5 lines of context
@@ -514,7 +518,7 @@ export class ClaudeManager {
     const session = this.sessions.get(conversationId);
     if (!session) {
       console.log(`[MENU] no session for ${conversationId}`);
-      this.callbacks.onError(conversationId, 'No active Claude session');
+      this.callbacks.onError(conversationId, `No active ${this.backend.name} session`);
       return;
     }
 
@@ -574,7 +578,7 @@ export class ClaudeManager {
   }
 
   /**
-   * Send interrupt (Escape or Ctrl-C) to Claude session
+   * Send interrupt (Escape or Ctrl-C) to AI session
    */
   async interruptSession(conversationId: string): Promise<void> {
     const session = this.sessions.get(conversationId);
@@ -604,7 +608,7 @@ export class ClaudeManager {
   }
 
   /**
-   * Kill a Claude session
+   * Kill an AI session
    */
   async killSession(conversationId: string): Promise<void> {
     const session = this.sessions.get(conversationId);
@@ -615,20 +619,20 @@ export class ClaudeManager {
       }
       try {
         await tmux.killSession(session.tmuxName);
-      } catch (err) { console.warn('[CLAUDE] Failed to kill tmux session:', err instanceof Error ? err.message : err); }
+      } catch (err) { console.warn(`${this.backend.logPrefix} Failed to kill tmux session:`, err instanceof Error ? err.message : err); }
       this.sessions.delete(conversationId);
     }
   }
 
   /**
-   * Reconnect to an existing Claude tmux session (after bot restart).
+   * Reconnect to an existing AI tmux session (after bot restart).
    * Registers the session in memory so messages can be routed to it.
    */
   async reconnectSession(conversationId: string, tmuxName: string): Promise<boolean> {
     const exists = await tmux.sessionExists(tmuxName);
     if (!exists) return false;
 
-    const session: ClaudeSession = {
+    const session: AISession = {
       tmuxName,
       conversationId,
       lastCaptureContent: '',
@@ -637,12 +641,12 @@ export class ClaudeManager {
     try {
       session.lastCaptureContent = await tmux.capturePane(tmuxName);
     } catch (err) {
-      console.warn('[CLAUDE] Failed to capture pane on reconnect:', err instanceof Error ? err.message : err);
+      console.warn(`${this.backend.logPrefix} Failed to capture pane on reconnect:`, err instanceof Error ? err.message : err);
       session.lastCaptureContent = '';
     }
 
     this.sessions.set(conversationId, session);
-    console.log(`[CLAUDE] Reconnected to tmux session: ${tmuxName}`);
+    console.log(`${this.backend.logPrefix} Reconnected to tmux session: ${tmuxName}`);
     return true;
   }
 

@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { ClaudeManager, ClaudeManagerCallbacks } from '../src/claude/manager';
+import { AIManager, AIManagerCallbacks } from '../src/ai/manager';
+import { CLAUDE_BACKEND, OPENCODE_BACKEND } from '../src/ai/backend';
 
 // Mock the tmux module
 vi.mock('../src/terminal/tmux', () => ({
@@ -20,6 +21,7 @@ vi.mock('../src/config', () => ({
     terminal: { cols: 80, rows: 24, shell: '/bin/bash', historyLimit: 50000 },
     session: { prefix: 'test', dataDir: '/tmp/test' },
     claude: { timeout: 300000, defaultMode: 'default', cardUpdateInterval: 500 },
+    opencode: { timeout: 300000, defaultMode: 'default' },
     timing: {
       shellCaptureDelay: 1500,
       rawModeCaptureDelay: 400,
@@ -35,10 +37,10 @@ import * as tmux from '../src/terminal/tmux';
 
 /**
  * Helper: start a session while advancing fake timers to resolve the
- * internal 3-second startup delay inside ClaudeManager.startSession().
+ * internal 3-second startup delay inside AIManager.startSession().
  */
 async function startSessionWithTimers(
-  manager: ClaudeManager,
+  manager: AIManager,
   convId: string,
   tmuxName: string,
   cwd?: string,
@@ -49,9 +51,9 @@ async function startSessionWithTimers(
   return promise;
 }
 
-describe('ClaudeManager', () => {
-  let manager: ClaudeManager;
-  let callbacks: ClaudeManagerCallbacks;
+describe('AIManager', () => {
+  let manager: AIManager;
+  let callbacks: AIManagerCallbacks;
 
   beforeEach(() => {
     vi.clearAllMocks();
@@ -63,7 +65,7 @@ describe('ClaudeManager', () => {
       onMenu: vi.fn(),
       onError: vi.fn(),
     };
-    manager = new ClaudeManager(callbacks);
+    manager = new AIManager(callbacks, CLAUDE_BACKEND);
   });
 
   afterEach(() => {
@@ -118,7 +120,7 @@ describe('ClaudeManager', () => {
 
     expect(callbacks.onError).toHaveBeenCalledWith(
       'nonexistent',
-      'No active Claude session',
+      'No active claude session',
     );
   });
 
@@ -211,7 +213,13 @@ describe('ClaudeManager', () => {
 
     expect(callbacks.onError).toHaveBeenCalledWith(
       'conv1',
-      'Claude response timed out',
+      'claude response timed out',
     );
+  });
+
+  it('startSession with opencode backend uses opencode command', async () => {
+    const ocManager = new AIManager(callbacks, OPENCODE_BACKEND);
+    await startSessionWithTimers(ocManager, 'conv1', 'oc-conv1');
+    expect(tmux.createSession).toHaveBeenCalledWith('oc-conv1', 'opencode', 80, 24);
   });
 });

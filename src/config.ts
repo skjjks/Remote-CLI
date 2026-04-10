@@ -31,6 +31,10 @@ export interface Config {
     defaultMode: 'default' | 'auto';
     cardUpdateInterval: number;
   };
+  opencode: {
+    timeout: number;
+    defaultMode: 'default' | 'auto';
+  };
   timing: {
     shellCaptureDelay: number;
     rawModeCaptureDelay: number;
@@ -96,6 +100,10 @@ export function loadConfig(): Config {
       timeout: getEnvVarInt('CLAUDE_TIMEOUT', 300000),
       defaultMode: (getEnvVar('CLAUDE_DEFAULT_MODE', 'default') as 'default' | 'auto'),
       cardUpdateInterval: getEnvVarInt('CLAUDE_CARD_UPDATE_INTERVAL', 500),
+    },
+    opencode: {
+      timeout: getEnvVarInt('OPENCODE_TIMEOUT', 300000),
+      defaultMode: (getEnvVar('OPENCODE_DEFAULT_MODE', 'default') as 'default' | 'auto'),
     },
     timing: {
       shellCaptureDelay: getEnvVarInt('TIMING_SHELL_CAPTURE_DELAY', 1500),
