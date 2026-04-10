@@ -297,6 +297,12 @@ export class SessionManager {
     }
 
     this.data.sessions = this.data.sessions.filter(s => s.id !== sessionId);
+
+    // Reset nextId when all sessions are gone to prevent unbounded growth
+    if (this.data.sessions.length === 0) {
+      this.data.nextId = 0;
+    }
+
     this.saveSessions();
   }
 
