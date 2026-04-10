@@ -245,8 +245,10 @@ export class AIManager {
     // Everything from startIdx in after is new
     const newLines = afterLines.slice(startIdx);
 
-    // Clean Claude UI chrome, then format code sections as markdown
-    const cleaned = this.cleanClaudeOutput(newLines.join('\n'));
+    // Clean UI chrome based on backend, then format code sections as markdown
+    const cleaned = this.backend.name === 'opencode'
+      ? this.cleanOpencodeOutput(newLines.join('\n'))
+      : this.cleanClaudeOutput(newLines.join('\n'));
     return this.formatAsMarkdown(cleaned);
   }
 
@@ -298,6 +300,76 @@ export class AIManager {
       const isEmpty = line.trim() === '';
       if (isEmpty && prevEmpty) continue;
       // Skip exact duplicate consecutive lines
+      if (!isEmpty && line.trim() === prevLine.trim()) continue;
+      result.push(line);
+      prevEmpty = isEmpty;
+      prevLine = line;
+    }
+
+    // Trim leading/trailing empty lines
+    let start = 0;
+    while (start < result.length && result[start].trim() === '') start++;
+    let end = result.length - 1;
+    while (end > start && result[end].trim() === '') end--;
+
+    return result.slice(start, end + 1).join('\n');
+  }
+
+  /**
+   * Strip opencode interactive UI chrome from output.
+   */
+  private cleanOpencodeOutput(text: string): string {
+    const lines = text.split('\n');
+    const cleaned: string[] = [];
+
+    for (const line of lines) {
+      const trimmed = line.trim();
+
+      if (!trimmed) { cleaned.push(''); continue; }
+
+      // Skip opencode logo (block characters spelling "opencode")
+      if (/^[█▀▄▐▛▜▌▝▘▞▚▟▙░▒▓\s]+$/.test(trimmed)) continue;
+
+      // Skip sidebar borders
+      if (/^[┃┃╹]+$/.test(trimmed)) continue;
+
+      // Skip bottom border
+      if (/^╹[▀═─]+/.test(trimmed)) continue;
+
+      // Skip "Ask anything..." prompt
+      if (/^Ask anything/.test(trimmed)) continue;
+
+      // Skip footer: "tab agents  ctrl+p commands"
+      if (/tab agents|ctrl\+p commands/.test(trimmed)) continue;
+
+      // Skip tips: "Tip Press Ctrl+C..."
+      if (/^Tip\s+Press/.test(trimmed)) continue;
+
+      // Skip status bar: "~/path:branch  ⊙ N MCP /status  X.Y.Z"
+      if (/⊙\s*\d+\s*MCP/.test(trimmed)) continue;
+
+      // Skip agent/model info line: "Sisyphus - Ultraworker  ppio/..."
+      if (/Sisyphus|Ultraworker/.test(trimmed)) continue;
+
+      // Skip completion indicator: "▣  Agent · model · Xs"
+      if (/^▣\s/.test(trimmed)) continue;
+
+      // Skip token usage: "46.9K (5%)"
+      if (/^\d+(\.\d+)?K?\s*\(\d+%\)/.test(trimmed)) continue;
+
+      // Clean: remove leading ┃ sidebar
+      let cleanLine = line.replace(/^\s*[┃╹]\s*/, '');
+
+      cleaned.push(cleanLine);
+    }
+
+    // Collapse consecutive empty lines and deduplicate
+    const result: string[] = [];
+    let prevEmpty = false;
+    let prevLine = '';
+    for (const line of cleaned) {
+      const isEmpty = line.trim() === '';
+      if (isEmpty && prevEmpty) continue;
       if (!isEmpty && line.trim() === prevLine.trim()) continue;
       result.push(line);
       prevEmpty = isEmpty;
