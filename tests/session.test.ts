@@ -64,6 +64,12 @@ describe('SessionManager with session types', () => {
     expect(updated?.claudeSessionId).toBe('claude-abc-123');
   });
 
+  it('should create opencode session with correct type', () => {
+    const session = manager.createOpencodeSession('conv-oc');
+    expect(session.type).toBe('opencode');
+    expect(session.conversationId).toBe('conv-oc');
+  });
+
   it('getSession returns correct type for both session types', async () => {
     const terminal = await manager.createSession('conv1');
     const claude = manager.createClaudeSession('conv2');

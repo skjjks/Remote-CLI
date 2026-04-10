@@ -8,7 +8,7 @@ import * as tmux from './tmux';
  */
 export interface SessionInfo {
   id: number;
-  type: 'claude' | 'terminal';
+  type: 'claude' | 'opencode' | 'terminal';
   tmuxName?: string;
   created: string;
   conversationId?: string;
@@ -182,6 +182,23 @@ export class SessionManager {
   }
 
   /**
+   * Create a new opencode session (no tmux needed)
+   */
+  createOpencodeSession(conversationId?: string): SessionInfo {
+    const id = this.data.nextId;
+    const session: SessionInfo = {
+      id,
+      type: 'opencode',
+      created: new Date().toISOString(),
+      conversationId,
+    };
+    this.data.sessions.push(session);
+    this.data.nextId++;
+    this.saveSessions();
+    return session;
+  }
+
+  /**
    * Update the Claude session ID (from system/init event)
    */
   updateClaudeSessionId(sessionId: number, claudeSessionId: string): void {
@@ -330,7 +347,7 @@ export class SessionManager {
 
     for (const session of this.data.sessions) {
       // Claude sessions don't need tmux validation
-      if (session.type === 'claude') {
+      if (session.type === 'claude' || session.type === 'opencode') {
         validSessions.push(session);
       } else if (session.tmuxName && existingTmuxSessions.includes(session.tmuxName)) {
         validSessions.push(session);
