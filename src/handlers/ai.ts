@@ -117,10 +117,25 @@ async function handleAICommand(
   // Check if session is still alive
   const alive = await manager.isSessionAlive(conversationId);
   const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
-  console.log(`${logPrefix} session alive=${alive}, prompt="${prompt.slice(0, 20)}"`);
+  console.log(`${logPrefix} session alive=${alive}, sdkSessionId=${session.claudeSessionId || 'none'}, prompt="${prompt.slice(0, 20)}"`);
+
   if (!alive) {
+    // Try to resume existing SDK session if we have a session ID
+    if (session.claudeSessionId) {
+      const label = backend === 'opencode' ? 'opencode' : 'Claude';
+      console.log(`${logPrefix} Resuming session ${session.claudeSessionId}`);
+      feishuBot.sendText(conversationId, `Resuming ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send resume notification:', err.message || err));
+      // Reconnect registers the session ID in the driver for resume
+      await manager.reconnectSession(conversationId, session.claudeSessionId);
+      manager.sendMessage(conversationId, prompt).catch(err => {
+        console.error(`Failed to send message to ${label}:`, err);
+      });
+      return;
+    }
+
+    // No existing session ID — start fresh
     const label = backend === 'opencode' ? 'opencode' : 'Claude';
-    feishuBot.sendText(conversationId, `Restarting ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send restart notification:', err.message || err));
+    feishuBot.sendText(conversationId, `Starting new ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send restart notification:', err.message || err));
     manager.startSession(conversationId, `${backend}-${session.id}-${Date.now()}`).then(() => {
       const sdkSessionId = manager.getSessionId(conversationId);
       if (sdkSessionId) {
@@ -130,7 +145,7 @@ async function handleAICommand(
         console.error(`Failed to send message to ${label}:`, err);
       });
     }).catch(err => {
-      console.error(`Failed to restart ${label} session:`, err);
+      console.error(`Failed to start ${label} session:`, err);
     });
     return;
   }

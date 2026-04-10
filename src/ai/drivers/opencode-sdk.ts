@@ -246,13 +246,33 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
-  private handleSessionStatus(event: any): void {
+  private async handleSessionStatus(event: any): Promise<void> {
     const { sessionID, status } = event.properties;
     const session = this.findSessionById(sessionID);
     if (!session) return;
 
     if (status.type === 'idle') {
-      // Session finished processing
+      // Fetch final message details for tokens/cost
+      try {
+        const client = await ensureServer();
+        const msgs = await client.session.messages({ path: { id: session.sessionId! } });
+        const messagesData = (msgs.data || []) as any[];
+        // Find last assistant message
+        for (let i = messagesData.length - 1; i >= 0; i--) {
+          const msg = messagesData[i]?.info;
+          if (msg?.role === 'assistant') {
+            if (msg.tokens) {
+              session.lastTokens = { input: msg.tokens.input || 0, output: msg.tokens.output || 0 };
+            }
+            if (msg.cost !== undefined) session.lastCost = msg.cost;
+            if (msg.path?.cwd) session.cwd = msg.path.cwd;
+            if (msg.modelID) session.model = `${msg.providerID || ''}/${msg.modelID}`;
+            break;
+          }
+        }
+      } catch (err) {
+        console.warn('[OPENCODE-SDK] Failed to fetch final message details:', err instanceof Error ? err.message : err);
+      }
       if (session.accumulatedText && session.messageId) {
         const metadata: AIMetadata = {
           backend: 'opencode',
