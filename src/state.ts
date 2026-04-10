@@ -58,6 +58,9 @@ export function addToHistory(conversationId: string, command: string): void {
   }
 }
 
+/** Per-conversation model override. Key: conversationId, Value: model string */
+export const modelOverrides: Map<string, string> = new Map();
+
 export const COMMAND_PREFIX = '!';
 
 export const smartCard = new SmartCardBuilder();

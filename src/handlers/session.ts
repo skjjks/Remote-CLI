@@ -1,7 +1,7 @@
 import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
-import { activeSessions, commandHistory } from '../state';
+import { activeSessions, commandHistory, modelOverrides } from '../state';
 import { getClaudeManager, getOpencodeManager } from './ai';
 
 // ── Session management handlers ──
@@ -164,4 +164,30 @@ export async function handleHistory(conversationId: string): Promise<void> {
 
   const lines = history.map((cmd, i) => `  ${i + 1}. ${cmd}`);
   await feishuBot.sendText(conversationId, `Command history:\n${lines.join('\n')}`);
+}
+
+export async function handleModel(conversationId: string, model?: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+
+  if (!model) {
+    const current = modelOverrides.get(conversationId);
+    await feishuBot.sendText(conversationId, current
+      ? `Current model: ${current}\nUsage: !model <model-name>\nExample: !model sonnet, !model opus, !model haiku`
+      : 'No model override set (using default)\nUsage: !model <model-name>\nExample: !model sonnet, !model opus, !model haiku'
+    );
+    return;
+  }
+
+  // Common shorthand mappings
+  const shortcuts: Record<string, string> = {
+    sonnet: 'claude-sonnet-4-6',
+    opus: 'claude-opus-4-6',
+    haiku: 'claude-haiku-4-5-20251001',
+    'sonnet-4': 'claude-sonnet-4-6',
+    'opus-4': 'claude-opus-4-6',
+  };
+
+  const resolved = shortcuts[model.toLowerCase()] || model;
+  modelOverrides.set(conversationId, resolved);
+  await feishuBot.sendText(conversationId, `Model set to: ${resolved}\nNext message will use this model.`);
 }

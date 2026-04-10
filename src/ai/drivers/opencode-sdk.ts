@@ -1,6 +1,6 @@
 import type { AISessionDriver } from '../types';
 import type { AIManagerCallbacks, AIMetadata } from '../manager';
-import { pendingRequests } from '../../state';
+import { pendingRequests, modelOverrides } from '../../state';
 
 // @opencode-ai/sdk is ESM-only. We use dynamic import() to load it from CJS.
 // All SDK types are used structurally (duck-typed) to avoid compile-time ESM imports.
@@ -93,13 +93,26 @@ export class OpencodeSDKDriver implements AISessionDriver {
     session.messageId = undefined;
     session.assistantMessageIds.clear();
 
+    // Build prompt body with optional model override
+    const promptBody: any = {
+      parts: [{ type: 'text' as const, text: message }],
+      agent: 'build',
+    };
+    const modelOverride = modelOverrides.get(conversationId);
+    if (modelOverride) {
+      // Parse "provider/model" or just "model"
+      const parts = modelOverride.split('/');
+      if (parts.length >= 2) {
+        promptBody.model = { providerID: parts[0], modelID: parts.slice(1).join('/') };
+      } else {
+        promptBody.model = { providerID: 'anthropic', modelID: modelOverride };
+      }
+    }
+
     // Send prompt asynchronously — returns immediately, events arrive via SSE
     await client.session.promptAsync({
       path: { id: session.sessionId },
-      body: {
-        parts: [{ type: 'text' as const, text: message }],
-        agent: 'build',  // Use the primary agent
-      },
+      body: promptBody,
     });
 
     // Create the initial Feishu card

@@ -2,7 +2,7 @@ import { query, type Query, type SDKMessage, type Options as SDKOptions, type Pe
 import { getConfig } from '../../config';
 import type { AISessionDriver, PendingPermission } from '../types';
 import type { AIManagerCallbacks, AIMetadata } from '../manager';
-import { pendingRequests } from '../../state';
+import { pendingRequests, modelOverrides } from '../../state';
 
 interface ClaudeSession {
   conversationId: string;
@@ -51,6 +51,12 @@ export class ClaudeSDKDriver implements AISessionDriver {
     const sdkOptions: Partial<SDKOptions> = {
       allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
     };
+
+    // Apply model override if set
+    const modelOverride = modelOverrides.get(conversationId);
+    if (modelOverride) {
+      sdkOptions.model = modelOverride;
+    }
 
     if (mode === 'auto') {
       sdkOptions.permissionMode = 'bypassPermissions';
