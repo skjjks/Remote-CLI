@@ -49,7 +49,8 @@ export class ClaudeSDKDriver implements AISessionDriver {
     const mode = config.claude.defaultMode;
 
     const sdkOptions: Partial<SDKOptions> = {
-      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
+      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Skill', 'Agent', 'WebFetch', 'NotebookEdit', 'TodoRead', 'TodoWrite'],
+      settingSources: ['project' as any],  // Load .claude/skills, CLAUDE.md, slash commands
     };
 
     // Apply model override if set
