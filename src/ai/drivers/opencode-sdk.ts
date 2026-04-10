@@ -89,6 +89,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
       path: { id: session.sessionId },
       body: {
         parts: [{ type: 'text' as const, text: message }],
+        agent: 'build',  // Use the primary agent
       },
     });
 
