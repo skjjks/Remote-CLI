@@ -85,21 +85,36 @@ export class ClaudeSDKDriver implements AISessionDriver {
           });
 
           // Build description of what the tool wants to do
-          let description = `**${toolName}**`;
+          let description = '';
+          let menuTitle = `${options.title || toolName} wants permission`;
+
           if (toolName === 'Bash' && input.command) {
-            description += `\n\`\`\`\n${String(input.command).slice(0, 500)}\n\`\`\``;
+            description = `\`\`\`\n${String(input.command).slice(0, 500)}\n\`\`\``;
           } else if (toolName === 'Edit' && input.file_path) {
-            description += `\nFile: \`${input.file_path}\``;
+            description = `File: \`${input.file_path}\``;
           } else if ((toolName === 'Read' || toolName === 'Write') && input.file_path) {
-            description += `\nFile: \`${input.file_path}\``;
+            description = `File: \`${input.file_path}\``;
+          } else if (toolName === 'AskUserQuestion' && input.questions) {
+            // Format AskUserQuestion with full question text and options
+            const questions = input.questions as Array<{ question: string; header?: string; options?: Array<{ label: string; description?: string }> }>;
+            const parts: string[] = [];
+            for (const q of questions) {
+              parts.push(`**${q.header || 'Question'}**: ${q.question}`);
+              if (q.options) {
+                for (const opt of q.options) {
+                  parts.push(`  - ${opt.label}${opt.description ? `: ${opt.description}` : ''}`);
+                }
+              }
+            }
+            description = parts.join('\n');
+            menuTitle = 'Claude wants to ask you a question';
           } else {
-            const summary = JSON.stringify(input).slice(0, 200);
-            description += `\n${summary}`;
+            description = JSON.stringify(input, null, 2).slice(0, 500);
           }
 
           // Send permission card via onMenu callback
           this.callbacks.onMenu(conversationId, {
-            title: `${options.title || toolName} wants permission`,
+            title: menuTitle,
             options: [
               { label: 'Allow', index: 0, selected: false },
               { label: 'Deny', index: 1, selected: false },

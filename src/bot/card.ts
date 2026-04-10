@@ -262,11 +262,11 @@ export class SmartCardBuilder {
 
     if (hint) {
       parts.push('');
-      parts.push(`_${hint}_`);
+      parts.push(hint);
     }
     parts.push('\nType a number to select.');
 
-    return this.card('Claude', 'purple', [
+    return this.card(title || 'Action Required', 'orange', [
       { tag: 'markdown', content: parts.join('\n') },
     ]);
   }
