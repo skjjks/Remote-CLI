@@ -246,32 +246,38 @@ export class OpencodeSDKDriver implements AISessionDriver {
     const session = sessionID ? this.findSessionById(sessionID) : undefined;
     if (!session) return;
 
-    // Build question card from the event
-    const question = props.question || props.title || 'opencode has a question';
-    const options = (props.options || []) as Array<{ label: string; value?: string; description?: string }>;
+    const questionId = props.id; // e.g. "que_xxx"
+    const questions = (props.questions || []) as Array<{
+      question: string;
+      header?: string;
+      options?: Array<{ label: string; description?: string }>;
+    }>;
 
-    const menuOptions = options.map((opt: any, i: number) => ({
-      label: `${opt.label || opt.value || opt}${opt.description ? ' — ' + opt.description : ''}`,
-      index: i,
-      selected: false,
-    }));
+    // Send each question as a separate menu card
+    for (const q of questions) {
+      const menuOptions = (q.options || []).map((opt, i) => ({
+        label: `${opt.label}${opt.description ? ' — ' + opt.description : ''}`,
+        index: i,
+        selected: false,
+      }));
 
-    if (menuOptions.length > 0) {
-      this.callbacks.onMenu(session.conversationId, {
-        title: question,
-        options: menuOptions,
-        hint: '',
-      });
-    } else {
-      // No structured options — show as text in the stream
-      session.accumulatedText += `\n\n**Question:** ${question}`;
-      if (session.messageId) {
-        this.callbacks.onStreamUpdate(
-          session.conversationId,
-          session.messageId,
-          session.accumulatedText,
-          { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
-        );
+      if (menuOptions.length > 0) {
+        this.callbacks.onMenu(session.conversationId, {
+          title: `${q.header || 'Question'}: ${q.question}`,
+          options: menuOptions,
+          hint: `Reply with number to answer (question ID: ${questionId})`,
+        });
+      } else {
+        // Open-ended question — show in stream
+        session.accumulatedText += `\n\n**${q.header || 'Question'}:** ${q.question}`;
+        if (session.messageId) {
+          this.callbacks.onStreamUpdate(
+            session.conversationId,
+            session.messageId,
+            session.accumulatedText,
+            { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
+          );
+        }
       }
     }
   }
