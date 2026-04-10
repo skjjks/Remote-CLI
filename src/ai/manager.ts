@@ -13,7 +13,8 @@ export interface DetectedMenu {
 }
 
 export interface AIMetadata {
-  backend?: string;   // 'claude' | 'opencode'
+  backend?: string;    // 'claude' | 'opencode'
+  sessionId?: string;  // SDK session ID for display
   model?: string;
   cwd?: string;
   context?: string;
@@ -24,7 +25,7 @@ export interface AIMetadata {
 }
 
 export interface AIManagerCallbacks {
-  onStreamStart: (conversationId: string) => Promise<string | undefined>;
+  onStreamStart: (conversationId: string, metadata?: AIMetadata) => Promise<string | undefined>;
   onStreamUpdate: (conversationId: string, messageId: string, content: string, metadata?: AIMetadata) => void;
   onStreamEnd: (conversationId: string, messageId: string, content: string, metadata: AIMetadata) => void;
   onMenu: (conversationId: string, menu: DetectedMenu) => void;

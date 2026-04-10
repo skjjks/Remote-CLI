@@ -122,33 +122,35 @@ export class SmartCardBuilder {
     ]);
   }
 
-  buildTextCard(text: string, footer?: { backend?: string; model?: string; cwd?: string; context?: string; status?: string; costUsd?: number; inputTokens?: number; outputTokens?: number }): FeishuCardV2 {
+  buildTextCard(text: string, footer?: { backend?: string; sessionId?: string; model?: string; cwd?: string; context?: string; status?: string; costUsd?: number; inputTokens?: number; outputTokens?: number }): FeishuCardV2 {
     const chunks = this.splitContent(text, MAX_CARD_CONTENT_LENGTH);
     const elements: FeishuCardElement[] = chunks.map(chunk => ({
       tag: 'markdown' as const,
       content: chunk,
     }));
 
-    // Backend name for title
+    // Backend name + session ID for title
     const backendName = footer?.backend === 'opencode' ? 'Opencode' : 'Claude';
+    const sessionTag = footer?.sessionId ? ` #${footer.sessionId.slice(-6)}` : '';
     const color = footer?.backend === 'opencode' ? 'green' : 'purple';
 
     // Dynamic title based on status
+    const baseTitle = `${backendName}${sessionTag}`;
     const statusMap: Record<string, string> = {
-      thinking: `${backendName} (thinking...)`,
-      processing: `${backendName} (processing...)`,
-      done: backendName,
-      working: `${backendName} (working...)`,
-      Bash: `${backendName} (running command...)`,
-      Edit: `${backendName} (editing file...)`,
-      Update: `${backendName} (editing file...)`,
-      Read: `${backendName} (reading file...)`,
-      Write: `${backendName} (writing file...)`,
-      Glob: `${backendName} (searching files...)`,
-      Grep: `${backendName} (searching code...)`,
-      Agent: `${backendName} (running agent...)`,
+      thinking: `${baseTitle} (thinking...)`,
+      processing: `${baseTitle} (processing...)`,
+      done: baseTitle,
+      working: `${baseTitle} (working...)`,
+      Bash: `${baseTitle} (running command...)`,
+      Edit: `${baseTitle} (editing file...)`,
+      Update: `${baseTitle} (editing file...)`,
+      Read: `${baseTitle} (reading file...)`,
+      Write: `${baseTitle} (writing file...)`,
+      Glob: `${baseTitle} (searching files...)`,
+      Grep: `${baseTitle} (searching code...)`,
+      Agent: `${baseTitle} (running agent...)`,
     };
-    const title = footer?.status ? (statusMap[footer.status] || `${backendName} (${footer.status}...)`) : backendName;
+    const title = footer?.status ? (statusMap[footer.status] || `${baseTitle} (${footer.status}...)`) : baseTitle;
 
     const footerParts: string[] = [];
     if (footer?.model) footerParts.push(footer.model);

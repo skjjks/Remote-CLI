@@ -8,9 +8,9 @@ import { activeSessions, smartCard } from '../state';
 // ── Shared AI callbacks ──
 
 const aiCallbacks: AIManagerCallbacks = {
-  onStreamStart: async (conversationId) => {
+  onStreamStart: async (conversationId, metadata) => {
     const feishuBot = getFeishuBot();
-    const card = smartCard.buildTextCard('thinking...');
+    const card = smartCard.buildTextCard('thinking...', metadata);
     return await feishuBot.sendCard(conversationId, card);
   },
 

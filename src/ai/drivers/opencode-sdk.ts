@@ -94,7 +94,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     });
 
     // Create the initial Feishu card
-    session.messageId = await this.callbacks.onStreamStart(conversationId);
+    session.messageId = await this.callbacks.onStreamStart(conversationId, { backend: 'opencode', sessionId: session.sessionId, status: 'thinking' });
   }
 
   private async startEventLoop(client: OpencodeClient): Promise<void> {
@@ -189,7 +189,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
         session.conversationId,
         session.messageId,
         session.accumulatedText,
-        { backend: 'opencode', status: 'working' },
+        { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
       );
     }
   }
@@ -202,7 +202,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     if (status.type === 'idle') {
       // Session finished processing
       if (session.accumulatedText && session.messageId) {
-        const metadata: AIMetadata = { backend: 'opencode', status: 'done' };
+        const metadata: AIMetadata = { backend: 'opencode', sessionId: session.sessionId, status: 'done' };
         this.callbacks.onStreamEnd(
           session.conversationId,
           session.messageId,

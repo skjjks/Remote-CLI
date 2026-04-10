@@ -9,6 +9,8 @@ interface ClaudeSession {
   activeQuery?: Query;       // Current running query
   messageId?: string;        // Current Feishu card message ID
   accumulatedText: string;   // Accumulated response text
+  model?: string;
+  cwd?: string;
 }
 
 export class ClaudeSDKDriver implements AISessionDriver {
@@ -90,9 +92,12 @@ export class ClaudeSDKDriver implements AISessionDriver {
 
     try {
       for await (const msg of q) {
-        // Capture session ID from init event
+        // Capture session ID, model, cwd from init event
         if (msg.type === 'system' && 'subtype' in msg && (msg as any).subtype === 'init') {
-          session.sessionId = (msg as any).session_id;
+          const initMsg = msg as any;
+          session.sessionId = initMsg.session_id;
+          session.model = initMsg.model;
+          session.cwd = initMsg.cwd;
           continue;
         }
 
@@ -121,7 +126,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
 
           // Create card if first content
           if (!session.messageId && session.accumulatedText) {
-            session.messageId = await this.callbacks.onStreamStart(conversationId);
+            session.messageId = await this.callbacks.onStreamStart(conversationId, this.buildMetadata(session));
           }
 
           // Throttled update
@@ -145,6 +150,9 @@ export class ClaudeSDKDriver implements AISessionDriver {
           const result = msg as any;
           const metadata: AIMetadata = {
             backend: 'claude',
+            sessionId: session.sessionId,
+            model: session.model,
+            cwd: session.cwd,
             costUsd: result.total_cost_usd,
             inputTokens: result.usage?.input_tokens,
             outputTokens: result.usage?.output_tokens,
@@ -159,7 +167,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
           } else if (result.result) {
             // Fast response -- never streamed
             session.accumulatedText = result.result;
-            session.messageId = await this.callbacks.onStreamStart(conversationId);
+            session.messageId = await this.callbacks.onStreamStart(conversationId, this.buildMetadata(session));
             if (session.messageId) {
               this.callbacks.onStreamEnd(conversationId, session.messageId, session.accumulatedText, metadata);
             }
@@ -175,9 +183,12 @@ export class ClaudeSDKDriver implements AISessionDriver {
     }
   }
 
-  private buildMetadata(_session: ClaudeSession): AIMetadata {
+  private buildMetadata(session: ClaudeSession): AIMetadata {
     return {
       backend: 'claude',
+      sessionId: session.sessionId,
+      model: session.model,
+      cwd: session.cwd,
       status: 'working',
     };
   }
