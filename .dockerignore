@@ -1,0 +1,10 @@
+node_modules
+dist
+.git
+.claude
+*.md
+tests
+docs
+demo.txt
+data
+.env

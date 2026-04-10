@@ -66,6 +66,27 @@ npm run build
 npm start
 ```
 
+## Docker 部署
+
+```bash
+# 构建镜像
+npm run docker:build
+
+# 启动（后台运行）
+npm run docker:up
+
+# 查看日志
+npm run docker:logs
+
+# 重启
+npm run docker:restart
+
+# 停止
+npm run docker:down
+```
+
+确保 `.env` 文件已配置好后再启动。
+
 ## 命令
 
 | 命令 | 说明 |
