@@ -6,7 +6,7 @@ import * as tmux from './terminal/tmux';
 import { isInteractiveProgram, getShortcutKey } from './terminal/interactive';
 import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, extractCommandOutput } from './handlers/terminal';
-import { handleClaudeCommand, handleCd, getClaudeManager } from './handlers/claude';
+import { handleClaudeCommand, handleCd, getClaudeManager } from './handlers/ai';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory } from './handlers/session';
 // Note: handleCardAction is in ./handlers/card-action.ts but unused in WebSocket mode
 // (card button callbacks require HTTP webhook mode)

@@ -2,7 +2,7 @@ import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
 import { activeSessions, commandHistory } from '../state';
-import { getClaudeManager } from './claude';
+import { getClaudeManager } from './ai';
 
 // ── Session management handlers ──
 
