@@ -166,28 +166,51 @@ export async function handleHistory(conversationId: string): Promise<void> {
   await feishuBot.sendText(conversationId, `Command history:\n${lines.join('\n')}`);
 }
 
+// Common model shortcuts
+const MODEL_SHORTCUTS: Record<string, string> = {
+  sonnet: 'claude-sonnet-4-6',
+  opus: 'claude-opus-4-6',
+  haiku: 'claude-haiku-4-5-20251001',
+  'sonnet-4': 'claude-sonnet-4-6',
+  'opus-4': 'claude-opus-4-6',
+  'opus-fast': 'claude-opus-4-6-fast',
+};
+
+// Popular models to show in the list (curated from full model list)
+const POPULAR_MODELS = [
+  { shortcut: 'opus', model: 'claude-opus-4-6', desc: 'Most capable' },
+  { shortcut: 'opus-fast', model: 'claude-opus-4-6-fast', desc: 'Opus fast mode' },
+  { shortcut: 'sonnet', model: 'claude-sonnet-4-6', desc: 'Balanced' },
+  { shortcut: 'haiku', model: 'claude-haiku-4-5-20251001', desc: 'Fast & cheap' },
+];
+
 export async function handleModel(conversationId: string, model?: string): Promise<void> {
   const feishuBot = getFeishuBot();
 
-  if (!model) {
+  if (!model || model === 'list') {
     const current = modelOverrides.get(conversationId);
-    await feishuBot.sendText(conversationId, current
-      ? `Current model: ${current}\nUsage: !model <model-name>\nExample: !model sonnet, !model opus, !model haiku`
-      : 'No model override set (using default)\nUsage: !model <model-name>\nExample: !model sonnet, !model opus, !model haiku'
-    );
+    const lines = [
+      current ? `Current: **${current}**` : 'Current: default (no override)',
+      '',
+      '**Quick switch:**',
+      ...POPULAR_MODELS.map(m => `  \`!model ${m.shortcut}\` → ${m.model} (${m.desc})`),
+      '',
+      'Or use full name: `!model claude-sonnet-4-5`',
+      'For opencode: `!model anthropic/claude-sonnet-4-6`',
+      '',
+      '`!model reset` to clear override',
+    ];
+    await feishuBot.sendText(conversationId, lines.join('\n'));
     return;
   }
 
-  // Common shorthand mappings
-  const shortcuts: Record<string, string> = {
-    sonnet: 'claude-sonnet-4-6',
-    opus: 'claude-opus-4-6',
-    haiku: 'claude-haiku-4-5-20251001',
-    'sonnet-4': 'claude-sonnet-4-6',
-    'opus-4': 'claude-opus-4-6',
-  };
+  if (model === 'reset' || model === 'clear') {
+    modelOverrides.delete(conversationId);
+    await feishuBot.sendText(conversationId, 'Model override cleared. Using default model.');
+    return;
+  }
 
-  const resolved = shortcuts[model.toLowerCase()] || model;
+  const resolved = MODEL_SHORTCUTS[model.toLowerCase()] || model;
   modelOverrides.set(conversationId, resolved);
-  await feishuBot.sendText(conversationId, `Model set to: ${resolved}\nNext message will use this model.`);
+  await feishuBot.sendText(conversationId, `Model set to: **${resolved}**\nNext message will use this model.`);
 }
