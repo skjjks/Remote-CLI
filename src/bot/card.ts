@@ -3,7 +3,6 @@
  * Builds dynamically-partitioned Feishu cards for Claude events and terminal output.
  */
 
-import type { PromptDetectionResult } from '../terminal/prompt';
 
 // ── Feishu Card V2 types (markdown-based) ──
 
@@ -306,72 +305,6 @@ export class SmartCardBuilder {
     return this.card('Error', 'red', [
       { tag: 'markdown', content: `\`\`\`\n${error}\n\`\`\`` },
     ]);
-  }
-}
-
-// ── Legacy CardBuilder (unchanged — used by Terminal mode prompt detection) ──
-
-export class CardBuilder {
-  buildYesNoCard(result: PromptDetectionResult): FeishuCard {
-    const buttons: CardButton[] = [
-      { tag: 'button', text: { tag: 'plain_text', content: 'Yes' }, value: 'yes' },
-      { tag: 'button', text: { tag: 'plain_text', content: 'No' }, value: 'no' },
-    ];
-    return {
-      config: { wide_screen_mode: true },
-      elements: [
-        { tag: 'div', text: { tag: 'plain_text', content: result.message } },
-        { tag: 'action', actions: buttons },
-      ],
-    };
-  }
-
-  buildNumberedCard(result: PromptDetectionResult): FeishuCard {
-    const buttons: CardButton[] = this.buildOptionButtons(result.options);
-    return {
-      config: { wide_screen_mode: true },
-      elements: [
-        { tag: 'div', text: { tag: 'plain_text', content: result.message } },
-        { tag: 'action', actions: buttons },
-      ],
-    };
-  }
-
-  buildAskUserCard(result: PromptDetectionResult): FeishuCard {
-    const buttons: CardButton[] = this.buildOptionButtons(result.options);
-    let message = result.message;
-    if (result.isMultiSelect) {
-      message += ' (Multi-select)';
-    }
-    return {
-      config: { wide_screen_mode: true },
-      elements: [
-        { tag: 'div', text: { tag: 'plain_text', content: message } },
-        { tag: 'action', actions: buttons },
-      ],
-    };
-  }
-
-  buildCard(result: PromptDetectionResult): FeishuCard | null {
-    switch (result.type) {
-      case 'yesno': return this.buildYesNoCard(result);
-      case 'numbered': return this.buildNumberedCard(result);
-      case 'askuser': return this.buildAskUserCard(result);
-      default: return null;
-    }
-  }
-
-  private buildOptionButtons(options: Array<{ label: string; value: string }>): CardButton[] {
-    if (options.length === 0) return [];
-    const buttons: CardButton[] = [];
-    const visibleOptions = options.slice(0, MAX_VISIBLE_BUTTONS);
-    for (const option of visibleOptions) {
-      buttons.push({ tag: 'button', text: { tag: 'plain_text', content: option.label }, value: option.value });
-    }
-    if (options.length > MAX_VISIBLE_BUTTONS) {
-      buttons.push({ tag: 'button', text: { tag: 'plain_text', content: 'More options...' }, value: MORE_OPTIONS_VALUE });
-    }
-    return buttons;
   }
 }
 
