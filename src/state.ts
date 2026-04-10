@@ -23,7 +23,7 @@ export const pendingPrompts: Map<string, PendingPrompt> = new Map();
 
 /**
  * A pending permission or elicitation request waiting for user response.
- * Stored here so both the SDK driver and the card-action/message handler
+ * Stored here so both the SDK driver and the message handler
  * can access the same promise resolver.
  */
 export interface PendingRequest {

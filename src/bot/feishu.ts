@@ -341,7 +341,3 @@ export function getFeishuBot(): FeishuBot {
   }
   return _bot;
 }
-
-export function resetFeishuBot(): void {
-  _bot = null;
-}

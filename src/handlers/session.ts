@@ -29,7 +29,10 @@ export async function handleListSessions(conversationId: string): Promise<void> 
   const activeSessionId = activeSessions.get(conversationId);
   const lines = sessions.map(s => {
     const active = s.id === activeSessionId ? ' *' : '';
-    return `  ${s.id}: [${s.type}] created ${s.created}${active}`;
+    const sid = (s.type === 'claude' || s.type === 'opencode') && s.claudeSessionId
+      ? ` (${s.claudeSessionId})`
+      : '';
+    return `  ${s.id}: [${s.type}]${sid} created ${s.created}${active}`;
   });
 
   await feishuBot.sendText(conversationId, `Sessions:\n${lines.join('\n')}`);

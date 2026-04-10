@@ -45,10 +45,6 @@ interface CardConfig {
   wide_screen_mode: boolean;
 }
 
-export interface FeishuCard {
-  config: CardConfig;
-  elements: (CardDiv | CardAction)[];
-}
 
 // ── Constants ──
 
@@ -380,10 +376,6 @@ export class SmartCardBuilder {
 
 export function isMoreOptionsValue(value: string): boolean {
   return value === MORE_OPTIONS_VALUE;
-}
-
-export function getMaxVisibleButtons(): number {
-  return MAX_VISIBLE_BUTTONS;
 }
 
 export function isPermitAction(value: string): boolean {
