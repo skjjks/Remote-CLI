@@ -136,6 +136,12 @@ export class OpencodeSDKDriver implements AISessionDriver {
           payload = event;
         }
 
+        const evtType = payload?.type;
+        // Log interesting events
+        if (evtType === 'question.asked' || evtType === 'permission.updated') {
+          console.log(`[OPENCODE-SDK] Event ${evtType}:`, JSON.stringify(payload, null, 2)?.slice(0, 800));
+        }
+
         this.handleEvent(payload);
       }
     } catch (err) {
@@ -163,8 +169,16 @@ export class OpencodeSDKDriver implements AISessionDriver {
         this.handleSessionError(event);
         break;
 
+      case 'message.part.delta':
+        this.handlePartDelta(event);
+        break;
+
       case 'permission.updated':
         this.handlePermission(event);
+        break;
+
+      case 'question.asked':
+        this.handleQuestionAsked(event);
         break;
 
       default:
@@ -196,6 +210,68 @@ export class OpencodeSDKDriver implements AISessionDriver {
       }
       if (info.modelID) {
         session.model = `${info.providerID || ''}/${info.modelID}`;
+      }
+    }
+  }
+
+  private handlePartDelta(event: any): void {
+    const { sessionID, delta } = event.properties || {};
+    if (!delta || !sessionID) return;
+    const session = this.findSessionById(sessionID);
+    if (!session) return;
+
+    // Append text delta
+    session.accumulatedText += delta;
+
+    // Stream update
+    if (session.messageId && session.accumulatedText) {
+      this.callbacks.onStreamUpdate(
+        session.conversationId,
+        session.messageId,
+        session.accumulatedText,
+        {
+          backend: 'opencode',
+          sessionId: session.sessionId,
+          model: session.model,
+          cwd: session.cwd,
+          status: 'working',
+        },
+      );
+    }
+  }
+
+  private handleQuestionAsked(event: any): void {
+    const props = event.properties || {};
+    const sessionID = props.sessionID;
+    const session = sessionID ? this.findSessionById(sessionID) : undefined;
+    if (!session) return;
+
+    // Build question card from the event
+    const question = props.question || props.title || 'opencode has a question';
+    const options = (props.options || []) as Array<{ label: string; value?: string; description?: string }>;
+
+    const menuOptions = options.map((opt: any, i: number) => ({
+      label: `${opt.label || opt.value || opt}${opt.description ? ' — ' + opt.description : ''}`,
+      index: i,
+      selected: false,
+    }));
+
+    if (menuOptions.length > 0) {
+      this.callbacks.onMenu(session.conversationId, {
+        title: question,
+        options: menuOptions,
+        hint: '',
+      });
+    } else {
+      // No structured options — show as text in the stream
+      session.accumulatedText += `\n\n**Question:** ${question}`;
+      if (session.messageId) {
+        this.callbacks.onStreamUpdate(
+          session.conversationId,
+          session.messageId,
+          session.accumulatedText,
+          { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
+        );
       }
     }
   }
