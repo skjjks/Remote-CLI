@@ -99,19 +99,8 @@ export class OpencodeSDKDriver implements AISessionDriver {
       parts: [{ type: 'text' as const, text: message }],
       agent: 'build',
     };
-    const modelOverride = modelOverrides.get(conversationId);
-    if (modelOverride) {
-      // Only apply if it looks like an opencode model (provider/model format without ppio)
-      // Skip ppio/pa/ models — those are for Claude API, not opencode
-      if (!modelOverride.startsWith('ppio/')) {
-        const parts = modelOverride.split('/');
-        if (parts.length >= 2) {
-          promptBody.model = { providerID: parts[0], modelID: parts.slice(1).join('/') };
-        } else {
-          promptBody.model = { providerID: 'anthropic', modelID: modelOverride };
-        }
-      }
-    }
+    // Note: opencode model is configured in ~/.config/opencode/opencode.json
+    // We don't pass model override here — opencode manages its own providers/models
 
     // Send prompt asynchronously — returns immediately, events arrive via SSE
     await client.session.promptAsync({
