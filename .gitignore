@@ -35,8 +35,10 @@ tmp/
 temp/
 
 # Claude plugins/skills (managed separately)
-.claude/skills/
-.claude/plugins/
+.claude/
+
+# Docs (specs, plans — managed separately)
+docs/
 
 # Context files
 .context/

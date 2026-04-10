@@ -40,6 +40,8 @@ const SHORTCUT_COMMANDS: Record<string, string> = {
   'ctrl+c': 'C-c',
   'ctrl+d': 'C-d',
   'ctrl+z': 'C-z',
+  backspace: 'BSpace',
+  bs: 'BSpace',
 };
 
 /**
