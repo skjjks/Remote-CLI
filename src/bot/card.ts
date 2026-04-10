@@ -112,6 +112,10 @@ export class SmartCardBuilder {
     return chunks;
   }
 
+  private stripAnsi(text: string): string {
+    return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+  }
+
   buildInitCard(sessionId: string, model: string): FeishuCardV2 {
     return this.card('Claude Session Started', 'blue', [
       { tag: 'markdown', content: `**Session:** \`${sessionId}\`\n**Model:** ${model}` },
@@ -287,8 +291,9 @@ export class SmartCardBuilder {
     ]);
   }
 
-  buildTerminalOutputCard(output: string, opts?: { command?: string; sessionId?: number; cwd?: string }): FeishuCardV2 {
-    const chunks = this.splitContent(output, MAX_CARD_CONTENT_LENGTH);
+  buildTerminalOutputCard(output: string, opts?: { command?: string; sessionId?: number; cwd?: string; durationMs?: number }): FeishuCardV2 {
+    const cleaned = this.stripAnsi(output);
+    const chunks = this.splitContent(cleaned, MAX_CARD_CONTENT_LENGTH);
     const title = opts?.command ? `$ ${opts.command}` : 'Terminal';
     const elements: FeishuCardElement[] = chunks.map(chunk => ({
       tag: 'markdown' as const,

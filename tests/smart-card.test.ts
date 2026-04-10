@@ -157,4 +157,30 @@ describe('SmartCardBuilder', () => {
       expect(allContent).toContain('abc-123');
     });
   });
+
+  describe('stripAnsi', () => {
+    it('strips color codes', () => {
+      const input = '\x1b[32m✓\x1b[0m test passed';
+      const card = builder.buildTerminalOutputCard(input);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).not.toContain('\x1b');
+      expect(md.content).toContain('✓');
+      expect(md.content).toContain('test passed');
+    });
+
+    it('strips cursor movement codes', () => {
+      const input = '\x1b[2J\x1b[Hsome output';
+      const card = builder.buildTerminalOutputCard(input);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).not.toContain('\x1b');
+      expect(md.content).toContain('some output');
+    });
+
+    it('leaves clean text unchanged', () => {
+      const input = 'hello world';
+      const card = builder.buildTerminalOutputCard(input);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toContain('hello world');
+    });
+  });
 });
