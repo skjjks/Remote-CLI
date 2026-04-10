@@ -222,10 +222,38 @@ export class ClaudeSDKDriver implements AISessionDriver {
             }
           }
 
-          // Show tool use as status
+          // Handle tool use blocks
           for (const block of toolBlocks) {
             const toolName = block.name || 'Tool';
             const input = block.input || {};
+
+            // Intercept AskUserQuestion — show as interactive menu card
+            if (toolName === 'AskUserQuestion' && input.questions) {
+              const questions = input.questions as Array<{
+                question: string;
+                header?: string;
+                options?: Array<{ label: string; description?: string }>;
+                multiSelect?: boolean;
+              }>;
+
+              for (const q of questions) {
+                const menuOptions = (q.options || []).map((opt, i) => ({
+                  label: `${opt.label}${opt.description ? ' — ' + opt.description : ''}`,
+                  index: i,
+                  selected: false,
+                }));
+
+                // Send as interactive menu card
+                this.callbacks.onMenu(conversationId, {
+                  title: `${q.header || 'Question'}: ${q.question}`,
+                  options: menuOptions,
+                  hint: q.multiSelect ? '(Multiple select — type numbers)' : '',
+                });
+              }
+              continue;
+            }
+
+            // Other tools — show as status
             const inputSummary = typeof input === 'object'
               ? Object.entries(input).map(([k, v]) => `${k}: ${String(v).slice(0, 50)}`).join(', ')
               : String(input).slice(0, 100);
