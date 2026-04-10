@@ -116,6 +116,44 @@ export class SmartCardBuilder {
     return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
   }
 
+  private detectOutputLanguage(output: string): string {
+    const trimmed = output.trimStart();
+
+    // JSON: starts with { or [
+    if (trimmed.startsWith('{') || trimmed.startsWith('[')) {
+      return 'json';
+    }
+
+    const lines = output.split('\n');
+
+    // Diff: multiple lines starting with diff markers
+    let diffMarkers = 0;
+    for (const line of lines) {
+      if (/^(\+\+\+|---|@@|\+[^+]|-[^-]|diff --)/.test(line)) {
+        diffMarkers++;
+      }
+    }
+    if (diffMarkers >= 3) {
+      return 'diff';
+    }
+
+    // YAML: starts with --- or multiple key: value lines
+    if (trimmed.startsWith('---')) {
+      return 'yaml';
+    }
+    let kvCount = 0;
+    for (const line of lines.slice(0, 10)) {
+      if (/^\s*[\w.-]+:\s+\S/.test(line)) {
+        kvCount++;
+      }
+    }
+    if (kvCount >= 3) {
+      return 'yaml';
+    }
+
+    return 'bash';
+  }
+
   buildInitCard(sessionId: string, model: string): FeishuCardV2 {
     return this.card('Claude Session Started', 'blue', [
       { tag: 'markdown', content: `**Session:** \`${sessionId}\`\n**Model:** ${model}` },
@@ -295,9 +333,10 @@ export class SmartCardBuilder {
     const cleaned = this.stripAnsi(output);
     const chunks = this.splitContent(cleaned, MAX_CARD_CONTENT_LENGTH);
     const title = opts?.command ? `$ ${opts.command}` : 'Terminal';
+    const lang = this.detectOutputLanguage(cleaned);
     const elements: FeishuCardElement[] = chunks.map(chunk => ({
       tag: 'markdown' as const,
-      content: `\`\`\`\n${chunk}\n\`\`\``,
+      content: `\`\`\`${lang}\n${chunk}\n\`\`\``,
     }));
     const footerParts: string[] = [];
     if (opts?.sessionId !== undefined) footerParts.push(`Session #${opts.sessionId}`);

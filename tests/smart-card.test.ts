@@ -183,4 +183,41 @@ describe('SmartCardBuilder', () => {
       expect(md.content).toContain('hello world');
     });
   });
+
+  describe('detectOutputLanguage', () => {
+    it('detects JSON output', () => {
+      const jsonOutput = '{\n  "name": "test",\n  "version": "1.0"\n}';
+      const card = builder.buildTerminalOutputCard(jsonOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```json\n/);
+    });
+
+    it('detects JSON array output', () => {
+      const jsonOutput = '[\n  {"id": 1},\n  {"id": 2}\n]';
+      const card = builder.buildTerminalOutputCard(jsonOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```json\n/);
+    });
+
+    it('detects diff output', () => {
+      const diffOutput = 'diff --git a/file.ts b/file.ts\n--- a/file.ts\n+++ b/file.ts\n@@ -1,3 +1,4 @@\n+new line\n old line';
+      const card = builder.buildTerminalOutputCard(diffOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```diff\n/);
+    });
+
+    it('detects YAML output', () => {
+      const yamlOutput = '---\nname: test\nversion: 1.0\nkeys:\n  - alpha\n  - beta';
+      const card = builder.buildTerminalOutputCard(yamlOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```yaml\n/);
+    });
+
+    it('defaults to bash for plain terminal output', () => {
+      const plainOutput = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 file1\n-rw-r--r-- 1 user staff 256 Apr 10 file2';
+      const card = builder.buildTerminalOutputCard(plainOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```bash\n/);
+    });
+  });
 });
