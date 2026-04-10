@@ -101,12 +101,15 @@ export class OpencodeSDKDriver implements AISessionDriver {
     };
     const modelOverride = modelOverrides.get(conversationId);
     if (modelOverride) {
-      // Parse "provider/model" or just "model"
-      const parts = modelOverride.split('/');
-      if (parts.length >= 2) {
-        promptBody.model = { providerID: parts[0], modelID: parts.slice(1).join('/') };
-      } else {
-        promptBody.model = { providerID: 'anthropic', modelID: modelOverride };
+      // Only apply if it looks like an opencode model (provider/model format without ppio)
+      // Skip ppio/pa/ models — those are for Claude API, not opencode
+      if (!modelOverride.startsWith('ppio/')) {
+        const parts = modelOverride.split('/');
+        if (parts.length >= 2) {
+          promptBody.model = { providerID: parts[0], modelID: parts.slice(1).join('/') };
+        } else {
+          promptBody.model = { providerID: 'anthropic', modelID: modelOverride };
+        }
       }
     }
 
