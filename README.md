@@ -69,26 +69,32 @@ npm run build
 npm start
 ```
 
-## Docker 部署
+## 生产部署（PM2）
+
+使用 PM2 管理进程，支持自动重启、日志管理：
 
 ```bash
-# 构建镜像
-npm run docker:build
+# 首次部署（构建 + 启动）
+npm run deploy
 
-# 启动（后台运行）
-npm run docker:up
+# 查看状态
+npm run pm2:status
 
 # 查看日志
-npm run docker:logs
+npm run pm2:logs
 
 # 重启
-npm run docker:restart
+npm run pm2:restart
 
 # 停止
-npm run docker:down
+npm run pm2:stop
+
+# 开机自启（运行后按提示操作）
+pm2 startup
+pm2 save
 ```
 
-确保 `.env` 文件已配置好后再启动。
+确保 `.env` 文件已配置好后再部署。
 
 ## 命令
 
