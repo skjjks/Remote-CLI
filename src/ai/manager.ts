@@ -173,7 +173,7 @@ export class AIManager {
         }
 
         // Extract and clean new output
-        const newOutput = this.extractNewOutput(beforeContent, currentContent);
+        const newOutput = this.extractScreenContent(currentContent);
         const cleaned = newOutput.trim();
 
         if (currentContent !== lastRawContent) {
@@ -224,166 +224,23 @@ export class AIManager {
   }
 
   /**
-   * Extract new output by diffing before/after screen captures,
-   * then strip Claude Code's interactive UI chrome.
+   * Extract screen content, trimming trailing empty lines.
+   * Returns the full terminal screen as-is (no UI chrome filtering).
    */
-  private extractNewOutput(before: string, after: string): string {
-    const beforeLines = before.split('\n');
-    const afterLines = after.split('\n');
+  private extractScreenContent(content: string): string {
+    const lines = content.split('\n');
 
-    // Trim trailing empty lines
-    while (beforeLines.length > 0 && beforeLines[beforeLines.length - 1].trim() === '') beforeLines.pop();
-    while (afterLines.length > 0 && afterLines[afterLines.length - 1].trim() === '') afterLines.pop();
+    // Trim trailing empty lines (tmux pads to full screen height)
+    let end = lines.length - 1;
+    while (end >= 0 && lines[end].trim() === '') end--;
 
-    // Find where new content starts (skip common prefix lines)
-    let startIdx = 0;
-    const minLen = Math.min(beforeLines.length, afterLines.length);
-    while (startIdx < minLen && beforeLines[startIdx] === afterLines[startIdx]) {
-      startIdx++;
-    }
-
-    // Everything from startIdx in after is new
-    const newLines = afterLines.slice(startIdx);
-
-    // Clean UI chrome based on backend, then format code sections as markdown
-    const cleaned = this.backend.name === 'opencode'
-      ? this.cleanOpencodeOutput(newLines.join('\n'))
-      : this.cleanClaudeOutput(newLines.join('\n'));
-    return this.formatAsMarkdown(cleaned);
-  }
-
-  /**
-   * Strip Claude Code interactive UI chrome from output.
-   * Only filter hard UI elements, keep all content.
-   */
-  private cleanClaudeOutput(text: string): string {
-    const lines = text.split('\n');
-    const cleaned: string[] = [];
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-
-      if (!trimmed) { cleaned.push(''); continue; }
-
-      // Skip separator lines (----)
-      if (/^[─━═╌]{4,}/.test(trimmed)) continue;
-
-      // Skip empty input prompt (just > with nothing after)
-      if (/^❯\s*$/.test(trimmed)) continue;
-
-      // Skip Claude logo (block drawing characters only)
-      if (/^[▐▛▜▌▝▘▞▚█▟▙░▒▓\s]+$/.test(trimmed)) continue;
-
-      // Skip bottom status bar (contains git:( or Cinders)
-      if (/git:\(/.test(trimmed)) continue;
-      if (/\}@\.@\{/.test(trimmed)) continue;
-
-      // Clean: remove leading > (input echo)
-      let cleanLine = line;
-      if (/^\s*❯\s+/.test(cleanLine)) {
-        cleanLine = cleanLine.replace(/^\s*❯\s+/, '');
-      }
-
-      // Clean: remove leading bullet (response prefix)
-      if (/^\s*●\s/.test(cleanLine)) {
-        cleanLine = cleanLine.replace(/^\s*●\s/, '');
-      }
-
-      cleaned.push(cleanLine);
-    }
-
-    // Collapse consecutive empty lines and deduplicate consecutive identical lines
-    const result: string[] = [];
-    let prevEmpty = false;
-    let prevLine = '';
-    for (const line of cleaned) {
-      const isEmpty = line.trim() === '';
-      if (isEmpty && prevEmpty) continue;
-      // Skip exact duplicate consecutive lines
-      if (!isEmpty && line.trim() === prevLine.trim()) continue;
-      result.push(line);
-      prevEmpty = isEmpty;
-      prevLine = line;
-    }
-
-    // Trim leading/trailing empty lines
+    // Trim leading empty lines
     let start = 0;
-    while (start < result.length && result[start].trim() === '') start++;
-    let end = result.length - 1;
-    while (end > start && result[end].trim() === '') end--;
+    while (start <= end && lines[start].trim() === '') start++;
 
-    return result.slice(start, end + 1).join('\n');
+    return lines.slice(start, end + 1).join('\n');
   }
 
-  /**
-   * Strip opencode interactive UI chrome from output.
-   */
-  private cleanOpencodeOutput(text: string): string {
-    const lines = text.split('\n');
-    const cleaned: string[] = [];
-
-    for (const line of lines) {
-      const trimmed = line.trim();
-
-      if (!trimmed) { cleaned.push(''); continue; }
-
-      // Skip opencode logo (block characters spelling "opencode")
-      if (/^[█▀▄▐▛▜▌▝▘▞▚▟▙░▒▓\s]+$/.test(trimmed)) continue;
-
-      // Skip sidebar borders
-      if (/^[┃┃╹]+$/.test(trimmed)) continue;
-
-      // Skip bottom border
-      if (/^╹[▀═─]+/.test(trimmed)) continue;
-
-      // Skip "Ask anything..." prompt
-      if (/^Ask anything/.test(trimmed)) continue;
-
-      // Skip footer: "tab agents  ctrl+p commands"
-      if (/tab agents|ctrl\+p commands/.test(trimmed)) continue;
-
-      // Skip tips: "Tip Press Ctrl+C..."
-      if (/^Tip\s+Press/.test(trimmed)) continue;
-
-      // Skip status bar: "~/path:branch  ⊙ N MCP /status  X.Y.Z"
-      if (/⊙\s*\d+\s*MCP/.test(trimmed)) continue;
-
-      // Skip agent/model info line: "Sisyphus - Ultraworker  ppio/..."
-      if (/Sisyphus|Ultraworker/.test(trimmed)) continue;
-
-      // Skip completion indicator: "▣  Agent · model · Xs"
-      if (/^▣\s/.test(trimmed)) continue;
-
-      // Skip token usage: "46.9K (5%)"
-      if (/^\d+(\.\d+)?K?\s*\(\d+%\)/.test(trimmed)) continue;
-
-      // Clean: remove leading ┃ sidebar
-      let cleanLine = line.replace(/^\s*[┃╹]\s*/, '');
-
-      cleaned.push(cleanLine);
-    }
-
-    // Collapse consecutive empty lines and deduplicate
-    const result: string[] = [];
-    let prevEmpty = false;
-    let prevLine = '';
-    for (const line of cleaned) {
-      const isEmpty = line.trim() === '';
-      if (isEmpty && prevEmpty) continue;
-      if (!isEmpty && line.trim() === prevLine.trim()) continue;
-      result.push(line);
-      prevEmpty = isEmpty;
-      prevLine = line;
-    }
-
-    // Trim leading/trailing empty lines
-    let start = 0;
-    while (start < result.length && result[start].trim() === '') start++;
-    let end = result.length - 1;
-    while (end > start && result[end].trim() === '') end--;
-
-    return result.slice(start, end + 1).join('\n');
-  }
 
   /**
    * Extract model, cwd, context from the full captured pane.
@@ -450,56 +307,6 @@ export class AIManager {
     }
 
     return 'working';
-  }
-
-  /**
-   * Format cleaned output with markdown code blocks for tool outputs.
-   * Detects tool call patterns and wraps their content in ``` blocks.
-   */
-  private formatAsMarkdown(text: string): string {
-    const lines = text.split('\n');
-    const result: string[] = [];
-    let inCodeBlock = false;
-    let currentTool = '';
-
-    for (let i = 0; i < lines.length; i++) {
-      const trimmed = lines[i].trim();
-
-      // Detect tool call headers: "Update(...)", "Bash(...)", "Edit(...)", "Read(...)", "Write(...)" etc.
-      const toolMatch = trimmed.match(/^(Update|Bash|Edit|Read|Write|Glob|Grep|WebSearch|WebFetch)\((.+)\)$/);
-      if (toolMatch) {
-        if (inCodeBlock) { result.push('```'); inCodeBlock = false; }
-        currentTool = toolMatch[1];
-        result.push(`**${currentTool}**(${toolMatch[2]})`);
-        // Use diff syntax for Edit/Update tools, bash for Bash, plain for others
-        const lang = (currentTool === 'Edit' || currentTool === 'Update') ? 'diff'
-                   : (currentTool === 'Bash') ? 'bash'
-                   : '';
-        result.push('```' + lang);
-        inCodeBlock = true;
-        continue;
-      }
-
-      // Detect end of tool output: a line starting with bullet or asterisk (next section)
-      if (inCodeBlock && /^[●✻]/.test(trimmed)) {
-        result.push('```');
-        inCodeBlock = false;
-      }
-
-      // Detect plain text response lines (bullet prefix was already stripped)
-      // These should not be in a code block
-      if (inCodeBlock && !trimmed.startsWith('⎿') && !trimmed.match(/^\s/) && !trimmed.match(/^[-+\d]/) && trimmed.length > 0) {
-        // Looks like a natural language line, close code block
-        result.push('```');
-        inCodeBlock = false;
-      }
-
-      result.push(lines[i]);
-    }
-
-    if (inCodeBlock) { result.push('```'); }
-
-    return result.join('\n');
   }
 
   /**
