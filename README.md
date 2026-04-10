@@ -1,12 +1,13 @@
 # Remote CLI
 
-通过飞书聊天远程控制终端和 Claude Code 的 Bot。
+通过飞书聊天远程控制终端和 AI 编码助手的 Bot。支持 Claude Code 和 opencode 双后端。
 
 ## 功能
 
-**双模式运行：**
+**三模式运行：**
 - **Terminal 模式** — 在飞书中执行 shell 命令，支持交互式程序（vim、htop、less 等）
 - **Claude 模式** — 与 Claude Code 对话，支持流式输出和智能卡片
+- **Opencode 模式** — 与 opencode 对话，同样的 tmux 架构，可随时切换
 
 **交互式终端：**
 - 自动检测 vim/nano/htop 等交互式程序，切换为原始输入模式（不追加 Enter）
@@ -54,6 +55,8 @@ cp .env.example .env
 | `TERMINAL_ROWS` | No | 终端高度（默认 24） |
 | `CLAUDE_TIMEOUT` | No | Claude 响应超时，毫秒（默认 300000） |
 | `CLAUDE_DEFAULT_MODE` | No | Claude 权限模式：`default` 或 `auto` |
+| `OPENCODE_TIMEOUT` | No | opencode 响应超时，毫秒（默认 300000） |
+| `OPENCODE_DEFAULT_MODE` | No | opencode 模式：`default` 或 `auto`（auto = --pure） |
 
 ### 运行
 
@@ -93,6 +96,7 @@ npm run docker:down
 |------|------|
 | `!sh <command>` | 执行 shell 命令 |
 | `!claude <prompt>` | 发送消息给 Claude |
+| `!opencode <prompt>` / `!oc` | 发送消息给 opencode |
 | `!new` | 创建新 Claude 会话 |
 | `!list` | 列出所有会话 |
 | `!switch <id>` | 切换会话 |
@@ -108,7 +112,7 @@ npm run docker:down
 | `!cd <path>` | 切换 Claude 工作目录 |
 | `!mode auto\|default` | 切换 Claude 权限模式 |
 
-直接发消息（不带 `!` 前缀）会发送到当前活跃的 Claude 会话。
+直接发消息（不带 `!` 前缀）会发送到当前活跃会话（Claude 或 opencode）。
 
 ## 架构
 
@@ -116,8 +120,9 @@ npm run docker:down
 飞书 WebSocket ──→ 消息路由 (index.ts)
                       ├──→ Terminal 处理器 (handlers/terminal.ts)
                       │      └── tmux 会话
-                      ├──→ Claude 处理器 (handlers/claude.ts)
-                      │      └── Claude Code tmux 会话
+                      ├──→ AI 处理器 (handlers/ai.ts)
+                      │      ├── Claude Code tmux 会话
+                      │      └── opencode tmux 会话
                       ├──→ 会话管理 (handlers/session.ts)
                       └──→ 卡片动作 (handlers/card-action.ts)
 ```
