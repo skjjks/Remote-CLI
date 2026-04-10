@@ -1,0 +1,248 @@
+import { query, type Query, type SDKMessage, type Options as SDKOptions } from '@anthropic-ai/claude-agent-sdk';
+import { getConfig } from '../../config';
+import type { AISessionDriver, PendingPermission } from '../types';
+import type { AIManagerCallbacks, AIMetadata } from '../manager';
+
+interface ClaudeSession {
+  conversationId: string;
+  sessionId?: string;       // Claude session_id from init event
+  activeQuery?: Query;       // Current running query
+  messageId?: string;        // Current Feishu card message ID
+  accumulatedText: string;   // Accumulated response text
+}
+
+export class ClaudeSDKDriver implements AISessionDriver {
+  private sessions: Map<string, ClaudeSession> = new Map();
+  private callbacks: AIManagerCallbacks;
+  private pendingPermissions: Map<string, PendingPermission> = new Map();
+
+  constructor(callbacks: AIManagerCallbacks) {
+    this.callbacks = callbacks;
+  }
+
+  async start(conversationId: string, options: { cwd?: string }): Promise<void> {
+    // Check for existing session to resume
+    const existing = this.sessions.get(conversationId);
+
+    const session: ClaudeSession = {
+      conversationId,
+      sessionId: existing?.sessionId,
+      accumulatedText: '',
+    };
+    this.sessions.set(conversationId, session);
+
+    // Don't send a prompt on start -- just initialize
+    // The first sendMessage will send the actual prompt
+  }
+
+  async sendMessage(conversationId: string, message: string): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (!session) {
+      this.callbacks.onError(conversationId, 'No active Claude session');
+      return;
+    }
+
+    const config = getConfig();
+    const mode = config.claude.defaultMode;
+
+    const sdkOptions: Partial<SDKOptions> = {
+      allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch'],
+    };
+
+    if (mode === 'auto') {
+      sdkOptions.permissionMode = 'bypassPermissions';
+      sdkOptions.allowDangerouslySkipPermissions = true;
+    }
+
+    if (session.sessionId) {
+      sdkOptions.resume = session.sessionId;
+    }
+
+    // Reset accumulated text for new message
+    session.accumulatedText = '';
+    session.messageId = undefined;
+
+    // Create query
+    const q = query({ prompt: message, options: sdkOptions as SDKOptions });
+    session.activeQuery = q;
+
+    // Consume stream in background
+    this.consumeStream(conversationId, session, q).catch(err => {
+      console.error(`[CLAUDE-SDK] Stream error for ${conversationId}:`, err);
+      this.callbacks.onError(conversationId, `Stream error: ${err instanceof Error ? err.message : String(err)}`);
+    });
+  }
+
+  private async consumeStream(conversationId: string, session: ClaudeSession, q: Query): Promise<void> {
+    const config = getConfig();
+    const throttleInterval = config.claude.cardUpdateInterval;
+    let lastUpdateTime = 0;
+    let pendingUpdate = false;
+
+    const flushUpdate = () => {
+      if (session.messageId && session.accumulatedText) {
+        const metadata = this.buildMetadata(session);
+        this.callbacks.onStreamUpdate(conversationId, session.messageId, session.accumulatedText, metadata);
+        lastUpdateTime = Date.now();
+        pendingUpdate = false;
+      }
+    };
+
+    try {
+      for await (const msg of q) {
+        // Capture session ID from init event
+        if (msg.type === 'system' && 'subtype' in msg && (msg as any).subtype === 'init') {
+          session.sessionId = (msg as any).session_id;
+          continue;
+        }
+
+        // Assistant message -- extract text content
+        if (msg.type === 'assistant') {
+          const assistantMsg = msg as any;
+          const textBlocks = assistantMsg.message?.content?.filter((b: any) => b.type === 'text') || [];
+          const toolBlocks = assistantMsg.message?.content?.filter((b: any) => b.type === 'tool_use') || [];
+
+          // Accumulate text
+          for (const block of textBlocks) {
+            if (block.text) {
+              session.accumulatedText += (session.accumulatedText ? '\n' : '') + block.text;
+            }
+          }
+
+          // Show tool use as status
+          for (const block of toolBlocks) {
+            const toolName = block.name || 'Tool';
+            const input = block.input || {};
+            const inputSummary = typeof input === 'object'
+              ? Object.entries(input).map(([k, v]) => `${k}: ${String(v).slice(0, 50)}`).join(', ')
+              : String(input).slice(0, 100);
+            session.accumulatedText += `\n\n**${toolName}**(${inputSummary})`;
+          }
+
+          // Create card if first content
+          if (!session.messageId && session.accumulatedText) {
+            session.messageId = await this.callbacks.onStreamStart(conversationId);
+          }
+
+          // Throttled update
+          const now = Date.now();
+          if (now - lastUpdateTime >= throttleInterval) {
+            flushUpdate();
+          } else {
+            pendingUpdate = true;
+          }
+          continue;
+        }
+
+        // Tool progress -- update status
+        if (msg.type === 'tool_progress') {
+          // Just note the tool in progress for metadata
+          continue;
+        }
+
+        // Result -- stream complete
+        if (msg.type === 'result') {
+          const result = msg as any;
+          const metadata: AIMetadata = {
+            costUsd: result.total_cost_usd,
+            status: 'done',
+          };
+
+          // Flush any pending content
+          if (pendingUpdate) flushUpdate();
+
+          if (session.messageId && session.accumulatedText) {
+            this.callbacks.onStreamEnd(conversationId, session.messageId, session.accumulatedText, metadata);
+          } else if (result.result) {
+            // Fast response -- never streamed
+            session.accumulatedText = result.result;
+            session.messageId = await this.callbacks.onStreamStart(conversationId);
+            if (session.messageId) {
+              this.callbacks.onStreamEnd(conversationId, session.messageId, session.accumulatedText, metadata);
+            }
+          }
+
+          session.activeQuery = undefined;
+          return;
+        }
+      }
+    } catch (err) {
+      session.activeQuery = undefined;
+      throw err;
+    }
+  }
+
+  private buildMetadata(_session: ClaudeSession): AIMetadata {
+    return {
+      status: 'working',
+    };
+  }
+
+  async selectMenuOption(conversationId: string, index: number): Promise<void> {
+    // With SDK, menus are handled via canUseTool permissions, not numbered menus
+    // If needed, send as text message
+    await this.sendMessage(conversationId, String(index));
+  }
+
+  async interrupt(conversationId: string): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (session?.activeQuery) {
+      await session.activeQuery.interrupt();
+      session.activeQuery = undefined;
+    }
+  }
+
+  async isAlive(conversationId: string): Promise<boolean> {
+    return this.sessions.has(conversationId);
+  }
+
+  async reconnect(conversationId: string, sessionId: string): Promise<boolean> {
+    // Store session ID for resume on next sendMessage
+    const session: ClaudeSession = {
+      conversationId,
+      sessionId,
+      accumulatedText: '',
+    };
+    this.sessions.set(conversationId, session);
+    console.log(`[CLAUDE-SDK] Registered session ${sessionId} for resume`);
+    return true;
+  }
+
+  async kill(conversationId: string): Promise<void> {
+    const session = this.sessions.get(conversationId);
+    if (session) {
+      if (session.activeQuery) {
+        // Use the generator's return() to cleanly close
+        await session.activeQuery.return(undefined as any);
+        session.activeQuery = undefined;
+      }
+      this.sessions.delete(conversationId);
+    }
+  }
+
+  async killAll(): Promise<void> {
+    for (const [convId] of this.sessions) {
+      await this.kill(convId);
+    }
+  }
+
+  hasSession(conversationId: string): boolean {
+    return this.sessions.has(conversationId);
+  }
+
+  getSessionId(conversationId: string): string | undefined {
+    return this.sessions.get(conversationId)?.sessionId;
+  }
+
+  /** Resolve a pending permission request (called from card action handler). */
+  resolvePermission(toolUseID: string, allow: boolean): void {
+    const pending = this.pendingPermissions.get(toolUseID);
+    if (pending) {
+      pending.resolve(allow
+        ? { behavior: 'allow' }
+        : { behavior: 'deny', message: 'User denied permission' }
+      );
+      this.pendingPermissions.delete(toolUseID);
+    }
+  }
+}
