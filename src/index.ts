@@ -62,7 +62,7 @@ async function handleCommand(
         await handleSwitchSession(conversationId, args[0]);
         return;
       case 'kill':
-        await handleKillSession(conversationId, args[0]);
+        await handleKillSession(conversationId, args);
         return;
       case 'interrupt':
         await handleInterrupt(conversationId);

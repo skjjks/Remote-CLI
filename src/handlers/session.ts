@@ -69,28 +69,51 @@ export async function handleSwitchSession(conversationId: string, idStr?: string
   await feishuBot.sendText(conversationId, `Switched to ${session.type} session ${sessionId}`);
 }
 
-export async function handleKillSession(conversationId: string, idStr?: string): Promise<void> {
+export async function handleKillSession(conversationId: string, args: string[]): Promise<void> {
   const feishuBot = getFeishuBot();
 
-  if (!idStr) {
-    await feishuBot.sendText(conversationId, 'Usage: !kill <session_id>');
-    return;
-  }
-
-  const sessionId = parseInt(idStr, 10);
-  if (isNaN(sessionId)) {
-    await feishuBot.sendText(conversationId, 'Invalid session ID');
+  if (args.length === 0) {
+    await feishuBot.sendText(conversationId, 'Usage: !kill <id> [id2 id3...] or !kill all');
     return;
   }
 
   const sessionManager = getSessionManager();
-  const session = sessionManager.getSession(sessionId);
-  if (!session) {
-    await feishuBot.sendText(conversationId, `Session ${sessionId} not found`);
+
+  // Handle "!kill all"
+  if (args[0] === 'all') {
+    const sessions = sessionManager.getSessions();
+    const count = sessions.length;
+    for (const s of sessions) {
+      await killSingleSession(conversationId, s.id, sessionManager);
+    }
+    await feishuBot.sendText(conversationId, `Killed all ${count} sessions`);
     return;
   }
 
-  // Kill the appropriate process
+  // Kill multiple IDs: !kill 1 2 3
+  const killed: string[] = [];
+  for (const idStr of args) {
+    const sessionId = parseInt(idStr, 10);
+    if (isNaN(sessionId)) {
+      killed.push(`${idStr}: invalid ID`);
+      continue;
+    }
+    const session = sessionManager.getSession(sessionId);
+    if (!session) {
+      killed.push(`${sessionId}: not found`);
+      continue;
+    }
+    await killSingleSession(conversationId, sessionId, sessionManager);
+    killed.push(`${sessionId}: killed (${session.type})`);
+  }
+
+  await feishuBot.sendText(conversationId, killed.join('\n'));
+}
+
+async function killSingleSession(conversationId: string, sessionId: number, sessionManager: ReturnType<typeof getSessionManager>): Promise<void> {
+  const session = sessionManager.getSession(sessionId);
+  if (!session) return;
+
   if (session.type === 'terminal' && session.tmuxName) {
     try { await tmux.killSession(session.tmuxName); } catch (err) { console.warn('[SESSION] Failed to kill tmux session:', err instanceof Error ? err.message : err); }
   } else if (session.type === 'claude') {
@@ -106,8 +129,6 @@ export async function handleKillSession(conversationId: string, idStr?: string):
   if (activeSessions.get(conversationId) === sessionId) {
     activeSessions.delete(conversationId);
   }
-
-  await feishuBot.sendText(conversationId, `Killed ${session.type} session ${sessionId}`);
 }
 
 export async function handleInterrupt(conversationId: string): Promise<void> {
