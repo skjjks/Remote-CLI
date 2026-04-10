@@ -166,22 +166,18 @@ export async function handleHistory(conversationId: string): Promise<void> {
   await feishuBot.sendText(conversationId, `Command history:\n${lines.join('\n')}`);
 }
 
-// Common model shortcuts
+// Model shortcuts — read from env vars with fallback
 const MODEL_SHORTCUTS: Record<string, string> = {
-  sonnet: 'claude-sonnet-4-6',
-  opus: 'claude-opus-4-6',
-  haiku: 'claude-haiku-4-5-20251001',
-  'sonnet-4': 'claude-sonnet-4-6',
-  'opus-4': 'claude-opus-4-6',
-  'opus-fast': 'claude-opus-4-6-fast',
+  opus: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'claude-opus-4-6',
+  sonnet: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'claude-sonnet-4-6',
+  haiku: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
 };
 
-// Popular models to show in the list (curated from full model list)
+// Popular models to show in the list
 const POPULAR_MODELS = [
-  { shortcut: 'opus', model: 'claude-opus-4-6', desc: 'Most capable' },
-  { shortcut: 'opus-fast', model: 'claude-opus-4-6-fast', desc: 'Opus fast mode' },
-  { shortcut: 'sonnet', model: 'claude-sonnet-4-6', desc: 'Balanced' },
-  { shortcut: 'haiku', model: 'claude-haiku-4-5-20251001', desc: 'Fast & cheap' },
+  { shortcut: 'opus', model: MODEL_SHORTCUTS.opus, desc: 'Most capable' },
+  { shortcut: 'sonnet', model: MODEL_SHORTCUTS.sonnet, desc: 'Balanced' },
+  { shortcut: 'haiku', model: MODEL_SHORTCUTS.haiku, desc: 'Fast & cheap' },
 ];
 
 export async function handleModel(conversationId: string, model?: string): Promise<void> {
