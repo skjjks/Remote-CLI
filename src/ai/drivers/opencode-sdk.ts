@@ -240,90 +240,15 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
   }
 
-  private handleQuestionAsked(event: any): void {
-    const props = event.properties || {};
-    const sessionID = props.sessionID;
-    const session = sessionID ? this.findSessionById(sessionID) : undefined;
-    if (!session) return;
-
-    const questionId = props.id;
-    const questions = (props.questions || []) as Array<{
-      question: string;
-      header?: string;
-      options?: Array<{ label: string; description?: string }>;
-    }>;
-
-    if (questions.length === 0) return;
-
-    // Collect answers one by one, then send all at once
-    const answers: number[] = [];
-    let currentIdx = 0;
-
-    const askNext = () => {
-      if (currentIdx >= questions.length) {
-        // All answered — send response back to opencode
-        this.sendQuestionResponse(answers);
-        return;
-      }
-
-      const q = questions[currentIdx];
-      const menuOptions = (q.options || []).map((opt, i) => ({
-        label: `${opt.label}${opt.description ? ' — ' + opt.description : ''}`,
-        index: i,
-        selected: false,
-      }));
-
-      const requestId = `oc-question-${questionId}-${currentIdx}`;
-      const timer = setTimeout(() => {
-        pendingRequests.delete(requestId);
-      }, 5 * 60 * 1000);
-
-      pendingRequests.set(requestId, {
-        type: 'question',
-        resolve: (choice: any) => {
-          clearTimeout(timer);
-          answers.push(typeof choice === 'number' ? choice : 0);
-          currentIdx++;
-          askNext();
-        },
-        conversationId: session.conversationId,
-        timer,
-      });
-
-      const qNum = questions.length > 1 ? ` (${currentIdx + 1}/${questions.length})` : '';
-      if (menuOptions.length > 0) {
-        this.callbacks.onMenu(session.conversationId, {
-          title: `${q.header || 'Question'}${qNum}: ${q.question}`,
-          options: menuOptions,
-          hint: '',
-        });
-      } else {
-        // Open-ended — show in stream, auto-advance
-        session.accumulatedText += `\n\n**${q.header || 'Question'}:** ${q.question}`;
-        if (session.messageId) {
-          this.callbacks.onStreamUpdate(
-            session.conversationId,
-            session.messageId,
-            session.accumulatedText,
-            { backend: 'opencode', sessionId: session.sessionId, status: 'working' },
-          );
-        }
-        answers.push(0);
-        currentIdx++;
-        askNext();
-      }
-    };
-
-    askNext();
-  }
-
-  private async sendQuestionResponse(answers: number[]): Promise<void> {
+  private async handleQuestionAsked(_event: any): Promise<void> {
+    // Decline the question tool — let opencode ask questions in text instead.
+    // Same approach as Claude: text-based Q&A is more natural in chat.
     try {
       const client = await ensureServer();
-      await (client as any).tui.control.response({ body: answers });
-      console.log(`[OPENCODE-SDK] Question answered: [${answers.join(', ')}]`);
+      await (client as any).tui.control.response({ body: null });
+      console.log('[OPENCODE-SDK] Declined question tool, opencode will ask in text');
     } catch (err) {
-      console.warn('[OPENCODE-SDK] Failed to send question response:', err instanceof Error ? err.message : err);
+      console.warn('[OPENCODE-SDK] Failed to decline question:', err instanceof Error ? err.message : err);
     }
   }
 
