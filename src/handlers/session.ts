@@ -180,22 +180,47 @@ const POPULAR_MODELS = [
   { shortcut: 'haiku', model: MODEL_SHORTCUTS.haiku, desc: 'Fast & cheap' },
 ];
 
+// Opencode model shortcuts (provider/model format from opencode config)
+const OC_MODEL_SHORTCUTS: Record<string, string> = {
+  opus: 'Mify-Anthropic/ppio/pa/claude-opus-4-6',
+  sonnet: 'google/antigravity-claude-sonnet-4-6',
+  'opus-think': 'google/antigravity-claude-opus-4-6-thinking',
+  gpt5: 'Mify-OpenAI/azure_openai/gpt-5.1-codex',
+  kimi: 'Mify-Kimi/volcengine_maas/kimi-k2-250711',
+  gemini: 'google/gemini-3-pro-preview',
+  'gemini-flash': 'google/gemini-3-flash-preview',
+  mimo: 'Mify-Xiaomi/xiaomi/mimo-v2-flash',
+};
+
 export async function handleModel(conversationId: string, model?: string): Promise<void> {
   const feishuBot = getFeishuBot();
+  const sessionManager = getSessionManager();
+
+  // Detect current backend
+  const activeSessionId = activeSessions.get(conversationId);
+  const session = activeSessionId !== undefined ? sessionManager.getSession(activeSessionId) : undefined;
+  const isOpencode = session?.type === 'opencode';
 
   if (!model || model === 'list') {
     const current = modelOverrides.get(conversationId);
-    const lines = [
+    const lines: string[] = [
       current ? `Current: **${current}**` : 'Current: default (no override)',
       '',
-      '**Quick switch:**',
-      ...POPULAR_MODELS.map(m => `  \`!model ${m.shortcut}\` → ${m.model} (${m.desc})`),
-      '',
-      'Or use full name: `!model claude-sonnet-4-5`',
-      'For opencode: `!model anthropic/claude-sonnet-4-6`',
-      '',
-      '`!model reset` to clear override',
     ];
+
+    if (isOpencode) {
+      lines.push('**Opencode models:**');
+      Object.entries(OC_MODEL_SHORTCUTS).forEach(([k, v]) => {
+        lines.push(`  \`!model ${k}\` → ${v}`);
+      });
+    } else {
+      lines.push('**Claude models:**');
+      POPULAR_MODELS.forEach(m => {
+        lines.push(`  \`!model ${m.shortcut}\` → ${m.model} (${m.desc})`);
+      });
+    }
+
+    lines.push('', 'Or use full model name directly', '`!model reset` to clear override');
     await feishuBot.sendText(conversationId, lines.join('\n'));
     return;
   }
@@ -206,7 +231,9 @@ export async function handleModel(conversationId: string, model?: string): Promi
     return;
   }
 
-  const resolved = MODEL_SHORTCUTS[model.toLowerCase()] || model;
+  // Resolve shortcuts based on backend
+  const shortcuts = isOpencode ? OC_MODEL_SHORTCUTS : MODEL_SHORTCUTS;
+  const resolved = shortcuts[model.toLowerCase()] || model;
   modelOverrides.set(conversationId, resolved);
   await feishuBot.sendText(conversationId, `Model set to: **${resolved}**\nNext message will use this model.`);
 }

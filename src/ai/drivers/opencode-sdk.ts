@@ -99,8 +99,15 @@ export class OpencodeSDKDriver implements AISessionDriver {
       parts: [{ type: 'text' as const, text: message }],
       agent: 'build',
     };
-    // Note: opencode model is configured in ~/.config/opencode/opencode.json
-    // We don't pass model override here — opencode manages its own providers/models
+    // Apply model override if set (format: "ProviderName/modelID")
+    const modelOverride = modelOverrides.get(conversationId);
+    if (modelOverride && modelOverride.includes('/')) {
+      const slashIdx = modelOverride.indexOf('/');
+      promptBody.model = {
+        providerID: modelOverride.slice(0, slashIdx),
+        modelID: modelOverride.slice(slashIdx + 1),
+      };
+    }
 
     // Send prompt asynchronously — returns immediately, events arrive via SSE
     await client.session.promptAsync({
