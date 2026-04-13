@@ -1,12 +1,13 @@
 import * as lark from '@larksuiteoapi/node-sdk';
 import { getConfig } from './config';
 import { getFeishuBot } from './bot/feishu';
-import { getSessionManager } from './terminal/session';
+import { getSessionManager, type SessionInfo } from './terminal/session';
 import * as tmux from './terminal/tmux';
 import { getShortcutKey } from './terminal/interactive';
 import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
+import type { AIManager } from './ai/manager';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
 
 // ── Command handling ──
@@ -150,6 +151,29 @@ async function routeToActiveSession(conversationId: string, message: string): Pr
 
 // ── Main entry point ──
 
+/**
+ * Reconnect AI sessions for a specific backend type after bot restart.
+ */
+async function reconnectBackend(
+  type: 'claude' | 'opencode',
+  manager: AIManager,
+  sessions: SessionInfo[],
+  sessionManager: ReturnType<typeof getSessionManager>,
+): Promise<void> {
+  for (const session of sessions) {
+    if (session.type !== type || !session.claudeSessionId || !session.conversationId) continue;
+    const ok = await manager.reconnectSession(session.conversationId, session.claudeSessionId);
+    if (ok) {
+      activeSessions.set(session.conversationId, session.id);
+    } else {
+      console.log(`[INIT] ${type} session ${session.id} (${session.claudeSessionId}) no longer exists, removing`);
+      await sessionManager.killSession(session.id).catch(err =>
+        console.warn('[INIT] Failed to kill stale session:', err.message || err),
+      );
+    }
+  }
+}
+
 async function main(): Promise<void> {
   const config = getConfig();
   const feishuBot = getFeishuBot();
@@ -158,34 +182,12 @@ async function main(): Promise<void> {
   const sessionManager = getSessionManager();
   await sessionManager.reconnectSessions();
 
-  // Reconnect Claude SDK sessions that survived bot restart
+  // Reconnect AI sessions that survived bot restart
   const claudeManager = getClaudeManager();
-  const allSessions = sessionManager.getSessions();
-  for (const session of allSessions) {
-    if (session.type === 'claude' && session.claudeSessionId && session.conversationId) {
-      const ok = await claudeManager.reconnectSession(session.conversationId, session.claudeSessionId);
-      if (ok) {
-        activeSessions.set(session.conversationId, session.id);
-      } else {
-        console.log(`[INIT] Claude session ${session.id} (${session.claudeSessionId}) no longer exists, removing`);
-        await sessionManager.killSession(session.id).catch(err => console.warn('[INIT] Failed to kill stale session:', err.message || err));
-      }
-    }
-  }
-
-  // Reconnect opencode SDK sessions
   const opencodeManager = getOpencodeManager();
-  for (const session of allSessions) {
-    if (session.type === 'opencode' && session.claudeSessionId && session.conversationId) {
-      const ok = await opencodeManager.reconnectSession(session.conversationId, session.claudeSessionId);
-      if (ok) {
-        activeSessions.set(session.conversationId, session.id);
-      } else {
-        console.log(`[INIT] Opencode session ${session.id} (${session.claudeSessionId}) no longer exists, removing`);
-        await sessionManager.killSession(session.id).catch(err => console.warn('[INIT] Failed to kill stale session:', err.message || err));
-      }
-    }
-  }
+  const allSessions = sessionManager.getSessions();
+  await reconnectBackend('claude', claudeManager, allSessions, sessionManager);
+  await reconnectBackend('opencode', opencodeManager, allSessions, sessionManager);
 
   // Create event dispatcher
   const eventDispatcher = new lark.EventDispatcher({
@@ -232,13 +234,13 @@ async function main(): Promise<void> {
   console.log('Commands: !sh, !claude, !opencode, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
 
-  // Periodic cleanup of stale sessions (every hour)
+  // Periodic cleanup of stale sessions
   setInterval(async () => {
-    const cleaned = await sessionManager.cleanupStaleSessions(24 * 60 * 60 * 1000);
+    const cleaned = await sessionManager.cleanupStaleSessions(config.session.staleTimeout);
     if (cleaned > 0) {
       console.log(`[CLEANUP] Removed ${cleaned} stale sessions`);
     }
-  }, 60 * 60 * 1000);
+  }, config.session.cleanupInterval);
 
   // Graceful shutdown
   const shutdown = async (signal: string) => {
