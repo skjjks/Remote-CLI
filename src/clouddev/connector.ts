@@ -107,18 +107,22 @@ export class CloudDevConnector {
       return;
     }
 
+    // Use last N lines for state detection — capturePane returns full scrollback
+    // which still contains old auth prompts even after auth succeeds.
+    const tail = this.tailLines(captured, 15);
+
     switch (this.state) {
       case 'ssh_sent':
         await this.handleSshSent(captured);
         break;
       case 'auth_waiting':
-        await this.handleAuthWaiting(captured);
+        await this.handleAuthWaiting(tail);
         break;
       case 'sync_sent':
-        await this.handleSyncSent(captured);
+        await this.handleSyncSent(tail);
         break;
       case 'domain_sent':
-        await this.handleDomainSent(captured);
+        await this.handleDomainSent(tail);
         break;
     }
   }
@@ -141,11 +145,11 @@ export class CloudDevConnector {
     }
   }
 
-  private async handleAuthWaiting(captured: string): Promise<void> {
-    const authInfo = extractAuthInfo(captured);
-    if (authInfo) return;
-
-    if (this.hasShellPrompt(captured)) {
+  private async handleAuthWaiting(tail: string): Promise<void> {
+    // Auth is done when a shell prompt appears at the end of the terminal.
+    // We check the tail (last N lines) so old auth prompts still in
+    // scrollback don't prevent detection.
+    if (this.hasShellPrompt(tail)) {
       this.setState('sync_sent', 'Auth complete, sending sync...');
       await tmux.sendLiteralKeys(this.tmuxName, 'sync');
       await tmux.sendKeys(this.tmuxName, 'Enter');
@@ -167,6 +171,19 @@ export class CloudDevConnector {
       this.setState('connected', 'Connected to engineering cloud');
       this.callbacks.onConnected();
     }
+  }
+
+  /**
+   * Get the last N non-empty lines from captured text.
+   * Used to detect current terminal state without being confused by
+   * old content still in the scrollback buffer.
+   */
+  private tailLines(text: string, n: number): string {
+    const lines = text.split('\n');
+    let end = lines.length - 1;
+    while (end >= 0 && lines[end].trim() === '') end--;
+    const start = Math.max(0, end - n + 1);
+    return lines.slice(start, end + 1).join('\n');
   }
 
   private hasShellPrompt(text: string): boolean {

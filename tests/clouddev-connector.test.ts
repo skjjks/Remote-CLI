@@ -103,9 +103,10 @@ https://auth.xiaomi.com/scan?token=abc123
     await connector.poll();
     expect(connector.getState()).toBe('auth_waiting');
 
-    // Second poll: auth passed, shell prompt visible
+    // Second poll: auth passed — full buffer still has old URL in scrollback,
+    // but the LAST lines show the shell prompt (auth screen is gone)
     vi.mocked(tmux.capturePane).mockResolvedValueOnce(
-      'Welcome to relay\ntestuser@relay:~$ '
+      'https://auth.xiaomi.com/scan?token=abc\n█▀▀▀█\n\n\n\nWelcome to relay\ntestuser@relay:~$ '
     );
     await connector.poll();
 
