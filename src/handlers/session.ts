@@ -118,7 +118,7 @@ async function killSingleSession(conversationId: string, sessionId: number, sess
   const session = sessionManager.getSession(sessionId);
   if (!session) return;
 
-  if (session.type === 'terminal' && session.tmuxName) {
+  if ((session.type === 'terminal' || session.type === 'clouddev') && session.tmuxName) {
     try { await tmux.killSession(session.tmuxName); } catch (err) { console.warn('[SESSION] Failed to kill tmux session:', err instanceof Error ? err.message : err); }
   } else if (session.type === 'claude') {
     const claudeManager = getClaudeManager();
@@ -155,7 +155,7 @@ export async function handleInterrupt(conversationId: string): Promise<void> {
     const opencodeManager = getOpencodeManager();
     await opencodeManager.interruptSession(conversationId);
     await feishuBot.sendText(conversationId, 'Opencode interrupted');
-  } else if (session?.type === 'terminal' && session.tmuxName) {
+  } else if ((session?.type === 'terminal' || session?.type === 'clouddev') && session?.tmuxName) {
     await tmux.sendKeys(session.tmuxName, 'C-c');
     await feishuBot.sendText(conversationId, 'Sent Ctrl-C');
   }
