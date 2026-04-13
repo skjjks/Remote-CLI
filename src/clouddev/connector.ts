@@ -6,6 +6,7 @@ export type ConnectorState =
   | 'init'
   | 'ssh_sent'
   | 'auth_waiting'
+  | 'token_waiting'
   | 'sync_sent'
   | 'domain_sent'
   | 'connected'
@@ -100,7 +101,7 @@ export class CloudDevConnector {
     const captured = await tmux.capturePane(this.tmuxName);
 
     const elapsed = Date.now() - this.stateEnteredAt;
-    const timeout = this.state === 'auth_waiting' ? this.authTimeoutMs : this.stepTimeoutMs;
+    const timeout = (this.state === 'auth_waiting' || this.state === 'token_waiting') ? this.authTimeoutMs : this.stepTimeoutMs;
     if (elapsed > timeout) {
       this.stop();
       this.setState('failed', `Timeout in state ${this.state} after ${Math.round(elapsed / 1000)}s`);
@@ -121,6 +122,9 @@ export class CloudDevConnector {
         break;
       case 'auth_waiting':
         await this.handleAuthWaiting(tail);
+        break;
+      case 'token_waiting':
+        await this.handleTokenWaiting(tail);
         break;
       case 'sync_sent':
         await this.handleSyncSent(tail);
@@ -154,9 +158,22 @@ export class CloudDevConnector {
   }
 
   private async handleAuthWaiting(tail: string): Promise<void> {
+    // If token prompt appeared (after password was auto-filled), transition to token_waiting
+    if (/token\s*:/i.test(tail)) {
+      this.setState('token_waiting', 'Password accepted, please enter token');
+      return;
+    }
+
     // Auth is done when a shell prompt appears at the end of the terminal.
-    // We check the tail (last N lines) so old auth prompts still in
-    // scrollback don't prevent detection.
+    if (this.hasShellPrompt(tail)) {
+      this.setState('sync_sent', 'Auth complete, sending sync...');
+      await tmux.sendLiteralKeys(this.tmuxName, 'sync');
+      await tmux.sendKeys(this.tmuxName, 'Enter');
+    }
+  }
+
+  private async handleTokenWaiting(tail: string): Promise<void> {
+    // Token entered and auth passed — shell prompt appears
     if (this.hasShellPrompt(tail)) {
       this.setState('sync_sent', 'Auth complete, sending sync...');
       await tmux.sendLiteralKeys(this.tmuxName, 'sync');

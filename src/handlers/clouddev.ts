@@ -44,6 +44,7 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
   const stateLabels: Record<string, string> = {
     ssh_sent: 'SSH connecting...',
     auth_waiting: 'waiting for auth',
+    token_waiting: 'please enter token',
     sync_sent: 'syncing...',
     domain_sent: 'entering cloud...',
     connected: 'done',
@@ -69,10 +70,8 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
       if (!cardMessageId) return;
       const status = stateLabels[state] || state;
       const authLine = authUrl ? `\n\n[点击扫码认证](${authUrl})` : '';
-      // Keep only non-empty lines, last 8 lines max — avoid noisy full terminal dump
-      const trimmed = screenshot.split('\n').filter(l => l.trim()).slice(-8).join('\n');
       const card = smartCard.buildTextCard(
-        `${authLine}\n\n\`\`\`\n${trimmed}\n\`\`\``,
+        `${authLine}\n\n\`\`\`\n${screenshot}\n\`\`\``,
         { backend: 'clouddev', status },
       );
       feishuBot.updateCard(cardMessageId, card).catch(err =>
