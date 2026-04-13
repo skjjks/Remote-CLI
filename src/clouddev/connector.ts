@@ -191,7 +191,8 @@ export class CloudDevConnector {
   }
 
   private hasShellPrompt(text: string): boolean {
-    return /[$#]\s*$/.test(text.trimEnd());
+    // Match common prompts: $ # and relay-style "hostname:user>"
+    return /[$#>]\s*$/.test(text.trimEnd());
   }
 
   private textContains(text: string, keyword: string): boolean {
