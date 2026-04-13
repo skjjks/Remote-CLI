@@ -50,6 +50,26 @@ https://relay.xiaomi.com/auth/scan?id=xyz789
       const urls = extractUrls(text);
       expect(urls).toEqual(['https://relay.xiaomi.com/auth/scan?id=xyz789']);
     });
+
+    it('rejoins URLs broken by terminal line wrapping', () => {
+      const text = `如二维码显示异常，可打开链接扫码登录 https://api.relay.xiaomi.com/qr.png?usernam
+e=songkang&code=lci4vl
+请[填写密码]或使用小米人[扫码]登录。`;
+      const urls = extractUrls(text);
+      expect(urls).toEqual(['https://api.relay.xiaomi.com/qr.png?username=songkang&code=lci4vl']);
+    });
+
+    it('handles real xiaomi relay auth screen with multiple URLs', () => {
+      const text = `如二维码显示异常，可打开链接扫码登录 https://api.relay.xiaomi.com/qr.png?usernam
+e=songkang&code=lci4vl
+请[填写密码]或使用小米人[扫码]登录。如二维码显示异常，请打开终端颜色支持，调整终
+端字体为英文。
+FAQ: https://mi.feishu.cn/wiki/YwtvwkiWYi5E75kchXtcLUWRnLb
+Your [EMAIL] password: `;
+      const urls = extractUrls(text);
+      expect(urls).toContainEqual('https://api.relay.xiaomi.com/qr.png?username=songkang&code=lci4vl');
+      expect(urls).toContainEqual('https://mi.feishu.cn/wiki/YwtvwkiWYi5E75kchXtcLUWRnLb');
+    });
   });
 
   describe('extractAuthInfo', () => {
@@ -84,6 +104,20 @@ liujialei@relay.xiaomi.com's password: `;
       const text = 'Welcome to Ubuntu 22.04\nuser@host:~$ ';
       const info = extractAuthInfo(text);
       expect(info).toBeNull();
+    });
+
+    it('picks QR URL over FAQ URL from real relay output', () => {
+      const text = `如二维码显示异常，可打开链接扫码登录 https://api.relay.xiaomi.com/qr.png?usernam
+e=songkang&code=lci4vl
+请[填写密码]或使用小米人[扫码]登录。如二维码显示异常，请打开终端颜色支持，调整终
+端字体为英文。
+FAQ: https://mi.feishu.cn/wiki/YwtvwkiWYi5E75kchXtcLUWRnLb
+Your [EMAIL] password: `;
+      const info = extractAuthInfo(text);
+      expect(info).toEqual({
+        type: 'qrcode',
+        url: 'https://api.relay.xiaomi.com/qr.png?username=songkang&code=lci4vl',
+      });
     });
   });
 });
