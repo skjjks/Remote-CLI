@@ -50,7 +50,7 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
         // Send clickable link + screenshot to Feishu
         const card = smartCard.buildTextCard(
           `**工程云认证 — 请扫码**\n\n[点击扫码认证](${url})\n\n\`\`\`\n${(screenshot || '').slice(-500)}\n\`\`\``,
-          { status: 'auth' },
+          { backend: 'clouddev', status: 'auth' },
         );
         await feishuBot.sendCard(conversationId, card);
       } else if (type === 'password') {
