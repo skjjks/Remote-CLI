@@ -69,8 +69,10 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
       if (!cardMessageId) return;
       const status = stateLabels[state] || state;
       const authLine = authUrl ? `\n\n[点击扫码认证](${authUrl})` : '';
+      // Keep only non-empty lines, last 8 lines max — avoid noisy full terminal dump
+      const trimmed = screenshot.split('\n').filter(l => l.trim()).slice(-8).join('\n');
       const card = smartCard.buildTextCard(
-        `${authLine}\n\n\`\`\`\n${screenshot}\n\`\`\``,
+        `${authLine}\n\n\`\`\`\n${trimmed}\n\`\`\``,
         { backend: 'clouddev', status },
       );
       feishuBot.updateCard(cardMessageId, card).catch(err =>
@@ -113,24 +115,12 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
 /**
  * Forward user input to an active clouddev session that is still connecting.
  * Used for typing passwords, tokens, etc. during the auth phase.
+ * No separate card is sent — the real-time CloudDev card handles display.
  */
 export async function forwardToClouddev(conversationId: string, tmuxName: string, message: string): Promise<void> {
-  const feishuBot = getFeishuBot();
   const tmux = await import('../terminal/tmux');
-
   await tmux.sendLiteralKeys(tmuxName, message);
   await tmux.sendKeys(tmuxName, 'Enter');
-
-  // Send screen capture feedback after a short delay
-  setTimeout(async () => {
-    try {
-      const captured = await tmux.capturePane(tmuxName);
-      const card = smartCard.buildTerminalOutputCard(captured, {});
-      await feishuBot.sendCard(conversationId, card);
-    } catch (err) {
-      console.error('[CLOUDDEV] Failed to capture pane:', err);
-    }
-  }, 1500);
 }
 
 /**
