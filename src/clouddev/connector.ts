@@ -170,7 +170,12 @@ export class CloudDevConnector {
   }
 
   private async handleDomainSent(captured: string): Promise<void> {
-    if (this.hasShellPrompt(captured) && !this.textContains(captured, 'relay')) {
+    // Connected when: shell prompt visible AND the last prompt line
+    // does NOT contain "relay" (relay prompts look like "hostname:user>",
+    // cloud prompts look like "docker@:~$").
+    // Check only the last line to avoid false negatives from "Relay-Share" URLs in scrollback.
+    const lastLine = captured.trimEnd().split('\n').pop() || '';
+    if (this.hasShellPrompt(captured) && !/relay/i.test(lastLine)) {
       this.stop();
       this.setState('connected', 'Connected to engineering cloud');
       this.callbacks.onConnected();
