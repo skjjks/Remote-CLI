@@ -1,6 +1,7 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { buildMetadata, createThrottledUpdater } from '../src/ai/shared';
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
+import { buildMetadata, createThrottledUpdater, createPendingRequest, resolvePendingInput } from '../src/ai/shared';
 import type { AIManagerCallbacks } from '../src/ai/manager';
+import { pendingRequests } from '../src/state';
 
 describe('ai/shared', () => {
   describe('buildMetadata', () => {
@@ -131,6 +132,112 @@ describe('ai/shared', () => {
 
       throttle.update('conv-1', 'msg-1', 'new content', meta);
       expect(mockCallbacks.onStreamUpdate).toHaveBeenCalledTimes(2);
+    });
+  });
+
+  describe('createPendingRequest / resolvePendingInput', () => {
+    beforeEach(() => {
+      pendingRequests.clear();
+      vi.useFakeTimers();
+    });
+
+    afterEach(() => {
+      vi.useRealTimers();
+      pendingRequests.clear();
+    });
+
+    it('createPendingRequest stores a request in pendingRequests', () => {
+      const resolve = vi.fn();
+      const id = createPendingRequest('permission', 'conv-1', resolve, 300000);
+
+      expect(pendingRequests.has(id)).toBe(true);
+      expect(pendingRequests.get(id)!.type).toBe('permission');
+      expect(pendingRequests.get(id)!.conversationId).toBe('conv-1');
+    });
+
+    it('createPendingRequest auto-denies permission after timeout', () => {
+      const resolve = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 5000);
+
+      vi.advanceTimersByTime(5000);
+
+      expect(resolve).toHaveBeenCalledWith({ behavior: 'deny', message: 'Permission request timed out' });
+      expect(pendingRequests.size).toBe(0);
+    });
+
+    it('createPendingRequest auto-declines question after timeout', () => {
+      const resolve = vi.fn();
+      createPendingRequest('question', 'conv-1', resolve, 5000);
+
+      vi.advanceTimersByTime(5000);
+
+      expect(resolve).toHaveBeenCalledWith({ action: 'decline' });
+    });
+
+    it('createPendingRequest calls custom onTimeout if provided', () => {
+      const resolve = vi.fn();
+      const onTimeout = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 5000, onTimeout);
+
+      vi.advanceTimersByTime(5000);
+
+      expect(onTimeout).toHaveBeenCalled();
+      expect(resolve).not.toHaveBeenCalled();
+    });
+
+    it('resolvePendingInput returns false for non-numeric input', () => {
+      const resolve = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 300000);
+
+      expect(resolvePendingInput('conv-1', 'hello')).toBe(false);
+      expect(resolve).not.toHaveBeenCalled();
+    });
+
+    it('resolvePendingInput returns false when no pending request', () => {
+      expect(resolvePendingInput('conv-1', '0')).toBe(false);
+    });
+
+    it('resolvePendingInput resolves permission allow (0)', () => {
+      const resolve = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 300000);
+
+      expect(resolvePendingInput('conv-1', '0')).toBe(true);
+      expect(resolve).toHaveBeenCalledWith({ behavior: 'allow' });
+      expect(pendingRequests.size).toBe(0);
+    });
+
+    it('resolvePendingInput resolves permission deny (1)', () => {
+      const resolve = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 300000);
+
+      expect(resolvePendingInput('conv-1', '1')).toBe(true);
+      expect(resolve).toHaveBeenCalledWith({ behavior: 'deny', message: 'User denied permission' });
+    });
+
+    it('resolvePendingInput resolves permission allow-all (2)', () => {
+      const resolve = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 300000);
+
+      expect(resolvePendingInput('conv-1', '2')).toBe(true);
+      expect(resolve).toHaveBeenCalledWith({ behavior: 'allow', updatedPermissions: [] });
+    });
+
+    it('resolvePendingInput resolves question with choice index', () => {
+      const resolve = vi.fn();
+      createPendingRequest('question', 'conv-1', resolve, 300000);
+
+      expect(resolvePendingInput('conv-1', '1')).toBe(true);
+      expect(resolve).toHaveBeenCalledWith(1);
+    });
+
+    it('resolvePendingInput clears the timeout timer', () => {
+      const resolve = vi.fn();
+      createPendingRequest('permission', 'conv-1', resolve, 5000);
+
+      resolvePendingInput('conv-1', '0');
+
+      vi.advanceTimersByTime(10000);
+      expect(resolve).toHaveBeenCalledTimes(1);
     });
   });
 });
