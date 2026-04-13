@@ -1,8 +1,9 @@
 import { query, type Query, type SDKMessage, type Options as SDKOptions, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
 import { getConfig } from '../../config';
 import type { AISessionDriver, PendingPermission } from '../types';
-import type { AIManagerCallbacks, AIMetadata } from '../manager';
+import type { AIManagerCallbacks } from '../manager';
 import { pendingRequests, modelOverrides } from '../../state';
+import { buildMetadata, createThrottledUpdater, createPendingRequest } from '../shared';
 
 interface ClaudeSession {
   conversationId: string;
@@ -66,29 +67,16 @@ export class ClaudeSDKDriver implements AISessionDriver {
       // In default (non-auto) mode, register permission callback
       sdkOptions.canUseTool = async (toolName, input, options) => {
         return new Promise<PermissionResult>((resolve) => {
-          const requestId = options.toolUseID || `perm-${Date.now()}`;
-          const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
-
-          const timer = setTimeout(() => {
-            pendingRequests.delete(requestId);
-            resolve({ behavior: 'deny', message: 'Permission request timed out (5 min)' });
-          }, TIMEOUT_MS);
-
-          pendingRequests.set(requestId, {
-            type: 'permission',
-            resolve: (value: PermissionResult) => {
-              clearTimeout(timer);
-              resolve(value);
-            },
-            conversationId,
-            timer,
-          });
+          const requestId = createPendingRequest('permission', conversationId, resolve, config.claude.permissionTimeout);
 
           // Deny AskUserQuestion — no terminal UI in SDK mode.
           // Tell Claude to ask questions directly in text output instead.
           if (toolName === 'AskUserQuestion') {
-            clearTimeout(timer);
-            pendingRequests.delete(requestId);
+            const pending = pendingRequests.get(requestId);
+            if (pending) {
+              clearTimeout(pending.timer);
+              pendingRequests.delete(requestId);
+            }
             resolve({
               behavior: 'deny',
               message: 'AskUserQuestion is not available in this environment. Ask your questions directly in your text response instead — the user will reply in the next message.',
@@ -126,30 +114,16 @@ export class ClaudeSDKDriver implements AISessionDriver {
       // Register elicitation callback for MCP / AskUserQuestion
       sdkOptions.onElicitation = async (request, { signal }) => {
         return new Promise<any>((resolve) => {
-          const requestId = `elicit-${Date.now()}`;
-          const TIMEOUT_MS = 5 * 60 * 1000; // 5 minutes
+          const requestId = createPendingRequest('question', conversationId, resolve, config.claude.permissionTimeout);
 
-          const timer = setTimeout(() => {
-            pendingRequests.delete(requestId);
-            resolve({ action: 'decline' as const });
-          }, TIMEOUT_MS);
-
-          // If aborted externally, clean up
           signal.addEventListener('abort', () => {
-            clearTimeout(timer);
-            pendingRequests.delete(requestId);
+            const pending = pendingRequests.get(requestId);
+            if (pending) {
+              clearTimeout(pending.timer);
+              pendingRequests.delete(requestId);
+            }
             resolve({ action: 'cancel' as const });
           }, { once: true });
-
-          pendingRequests.set(requestId, {
-            type: 'question',
-            resolve: (value: any) => {
-              clearTimeout(timer);
-              resolve(value);
-            },
-            conversationId,
-            timer,
-          });
 
           // Build menu from elicitation message
           const title = request.title || request.message || 'Claude has a question';
@@ -189,18 +163,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
 
   private async consumeStream(conversationId: string, session: ClaudeSession, q: Query): Promise<void> {
     const config = getConfig();
-    const throttleInterval = config.claude.cardUpdateInterval;
-    let lastUpdateTime = 0;
-    let pendingUpdate = false;
-
-    const flushUpdate = () => {
-      if (session.messageId && session.accumulatedText) {
-        const metadata = this.buildMetadata(session);
-        this.callbacks.onStreamUpdate(conversationId, session.messageId, session.accumulatedText, metadata);
-        lastUpdateTime = Date.now();
-        pendingUpdate = false;
-      }
-    };
+    const throttle = createThrottledUpdater(this.callbacks, config.claude.cardUpdateInterval);
 
     try {
       for await (const msg of q) {
@@ -240,15 +203,14 @@ export class ClaudeSDKDriver implements AISessionDriver {
 
           // Create card if first content
           if (!session.messageId && session.accumulatedText) {
-            session.messageId = await this.callbacks.onStreamStart(conversationId, this.buildMetadata(session));
+            const meta = buildMetadata({ backend: 'claude', sessionId: session.sessionId, model: session.model, cwd: session.cwd, status: 'working' });
+            session.messageId = await this.callbacks.onStreamStart(conversationId, meta);
           }
 
           // Throttled update
-          const now = Date.now();
-          if (now - lastUpdateTime >= throttleInterval) {
-            flushUpdate();
-          } else {
-            pendingUpdate = true;
+          if (session.messageId && session.accumulatedText) {
+            const meta = buildMetadata({ backend: 'claude', sessionId: session.sessionId, model: session.model, cwd: session.cwd, status: 'working' });
+            throttle.update(conversationId, session.messageId, session.accumulatedText, meta);
           }
           continue;
         }
@@ -262,7 +224,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
         // Result -- stream complete
         if (msg.type === 'result') {
           const result = msg as any;
-          const metadata: AIMetadata = {
+          const metadata = buildMetadata({
             backend: 'claude',
             sessionId: session.sessionId,
             model: session.model,
@@ -271,17 +233,20 @@ export class ClaudeSDKDriver implements AISessionDriver {
             inputTokens: result.usage?.input_tokens,
             outputTokens: result.usage?.output_tokens,
             status: 'done',
-          };
+          });
 
           // Flush any pending content
-          if (pendingUpdate) flushUpdate();
+          if (session.messageId && session.accumulatedText) {
+            throttle.flush(conversationId, session.messageId, session.accumulatedText, metadata);
+          }
 
           if (session.messageId && session.accumulatedText) {
             this.callbacks.onStreamEnd(conversationId, session.messageId, session.accumulatedText, metadata);
           } else if (result.result) {
             // Fast response -- never streamed
             session.accumulatedText = result.result;
-            session.messageId = await this.callbacks.onStreamStart(conversationId, this.buildMetadata(session));
+            const meta = buildMetadata({ backend: 'claude', sessionId: session.sessionId, model: session.model, cwd: session.cwd, status: 'working' });
+            session.messageId = await this.callbacks.onStreamStart(conversationId, meta);
             if (session.messageId) {
               this.callbacks.onStreamEnd(conversationId, session.messageId, session.accumulatedText, metadata);
             }
@@ -297,15 +262,6 @@ export class ClaudeSDKDriver implements AISessionDriver {
     }
   }
 
-  private buildMetadata(session: ClaudeSession): AIMetadata {
-    return {
-      backend: 'claude',
-      sessionId: session.sessionId,
-      model: session.model,
-      cwd: session.cwd,
-      status: 'working',
-    };
-  }
 
   async selectMenuOption(conversationId: string, index: number): Promise<void> {
     // With SDK, menus are handled via canUseTool permissions, not numbered menus
