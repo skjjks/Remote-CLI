@@ -61,16 +61,8 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
     },
 
     onAuthRequired: async (_type, url, _screenshot) => {
+      // Just store the URL — the real-time card update will display it
       if (url) authUrl = url;
-      // Auth hint: show both options (QR link + password status)
-      const lines: string[] = [];
-      if (url) lines.push(`[点击扫码认证](${url})`);
-      if (config.clouddev.emailPassword) {
-        lines.push('密码已自动填入，请输入小米人 token 验证码');
-      } else {
-        lines.push('请输入邮箱密码，或使用扫码认证');
-      }
-      await feishuBot.sendText(conversationId, lines.join('\n'));
     },
 
     onScreenUpdate: async (state, screenshot) => {
