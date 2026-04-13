@@ -1,6 +1,8 @@
 import type { AISessionDriver } from '../types';
 import type { AIManagerCallbacks, AIMetadata } from '../manager';
-import { pendingRequests, modelOverrides } from '../../state';
+import { modelOverrides } from '../../state';
+import { getConfig } from '../../config';
+import { buildMetadata, createThrottledUpdater, createPendingRequest } from '../shared';
 
 // @opencode-ai/sdk is ESM-only. We use dynamic import() to load it from CJS.
 // All SDK types are used structurally (duck-typed) to avoid compile-time ESM imports.
@@ -28,10 +30,7 @@ interface SessionState {
   lastCost?: number;
   cwd?: string;
   model?: string;
-  lastUpdateTime: number;   // Throttle card updates
 }
-
-const CARD_UPDATE_INTERVAL = 1000; // Min ms between card PATCH requests
 
 // Singleton server — shared across all driver instances
 let _server: { url: string; close(): void } | null = null;
@@ -51,9 +50,12 @@ export class OpencodeSDKDriver implements AISessionDriver {
   private sessions: Map<string, SessionState> = new Map();
   private callbacks: AIManagerCallbacks;
   private eventLoopRunning = false;
+  private throttle: ReturnType<typeof createThrottledUpdater>;
 
   constructor(callbacks: AIManagerCallbacks) {
     this.callbacks = callbacks;
+    const config = getConfig();
+    this.throttle = createThrottledUpdater(callbacks, config.opencode.cardUpdateInterval);
   }
 
   async start(conversationId: string, options: { cwd?: string }): Promise<void> {
@@ -74,7 +76,6 @@ export class OpencodeSDKDriver implements AISessionDriver {
       sessionId,
       accumulatedText: '',
       assistantMessageIds: new Set(),
-      lastUpdateTime: 0,
     };
     this.sessions.set(conversationId, session);
 
@@ -121,7 +122,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
     });
 
     // Create the initial Feishu card
-    session.messageId = await this.callbacks.onStreamStart(conversationId, { backend: 'opencode', sessionId: session.sessionId, status: 'thinking' });
+    session.messageId = await this.callbacks.onStreamStart(conversationId, buildMetadata({ backend: 'opencode', sessionId: session.sessionId, status: 'thinking' }));
   }
 
   private async startEventLoop(client: OpencodeClient): Promise<void> {
@@ -219,7 +220,19 @@ export class OpencodeSDKDriver implements AISessionDriver {
     session.accumulatedText += delta;
 
     // Throttled stream update to avoid Feishu rate limit
-    this.throttledUpdate(session);
+    if (session.messageId && session.accumulatedText) {
+      const meta = buildMetadata({
+        backend: 'opencode',
+        sessionId: session.sessionId,
+        model: session.model,
+        cwd: session.cwd,
+        inputTokens: session.lastTokens?.input,
+        outputTokens: session.lastTokens?.output,
+        costUsd: session.lastCost,
+        status: 'working',
+      });
+      this.throttle.update(session.conversationId, session.messageId, session.accumulatedText, meta);
+    }
   }
 
 
@@ -268,7 +281,19 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
 
     // Throttled stream update
-    this.throttledUpdate(session);
+    if (session.messageId && session.accumulatedText) {
+      const meta = buildMetadata({
+        backend: 'opencode',
+        sessionId: session.sessionId,
+        model: session.model,
+        cwd: session.cwd,
+        inputTokens: session.lastTokens?.input,
+        outputTokens: session.lastTokens?.output,
+        costUsd: session.lastCost,
+        status: 'working',
+      });
+      this.throttle.update(session.conversationId, session.messageId, session.accumulatedText, meta);
+    }
   }
 
   private async handleSessionStatus(event: any): Promise<void> {
@@ -299,7 +324,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
         console.warn('[OPENCODE-SDK] Failed to fetch final message details:', err instanceof Error ? err.message : err);
       }
       if (session.accumulatedText && session.messageId) {
-        const metadata: AIMetadata = {
+        const metadata = buildMetadata({
           backend: 'opencode',
           sessionId: session.sessionId,
           model: session.model,
@@ -308,7 +333,7 @@ export class OpencodeSDKDriver implements AISessionDriver {
           outputTokens: session.lastTokens?.output,
           costUsd: session.lastCost,
           status: 'done',
-        };
+        });
         this.callbacks.onStreamEnd(
           session.conversationId,
           session.messageId,
@@ -348,25 +373,21 @@ export class OpencodeSDKDriver implements AISessionDriver {
     }
 
     // Store pending request
-    const requestId = `oc-perm-${permissionId}`;
-    const timer = setTimeout(() => {
-      // Auto-reject after 5 minutes
-      pendingRequests.delete(requestId);
-      this.respondToPermission(session.sessionId!, permissionId, 'reject');
-    }, 5 * 60 * 1000);
-
-    pendingRequests.set(requestId, {
-      type: 'permission',
-      resolve: (result: any) => {
-        clearTimeout(timer);
+    const config = getConfig();
+    createPendingRequest(
+      'permission',
+      session.conversationId,
+      (result: any) => {
         const response = result.behavior === 'allow'
           ? (result.updatedPermissions?.length ? 'always' : 'once')
           : 'reject';
         this.respondToPermission(session.sessionId!, permissionId, response);
       },
-      conversationId: session.conversationId,
-      timer,
-    });
+      config.opencode.permissionTimeout,
+      () => {
+        this.respondToPermission(session.sessionId!, permissionId, 'reject');
+      },
+    );
 
     // Send permission card via menu callback
     this.callbacks.onMenu(session.conversationId, {
@@ -390,28 +411,6 @@ export class OpencodeSDKDriver implements AISessionDriver {
     } catch (err) {
       console.warn('[OPENCODE-SDK] Failed to respond to permission:', err instanceof Error ? err.message : err);
     }
-  }
-
-  private throttledUpdate(session: SessionState): void {
-    if (!session.messageId || !session.accumulatedText) return;
-    const now = Date.now();
-    if (now - session.lastUpdateTime < CARD_UPDATE_INTERVAL) return;
-    session.lastUpdateTime = now;
-    this.callbacks.onStreamUpdate(
-      session.conversationId,
-      session.messageId,
-      session.accumulatedText,
-      {
-        backend: 'opencode',
-        sessionId: session.sessionId,
-        model: session.model,
-        cwd: session.cwd,
-        inputTokens: session.lastTokens?.input,
-        outputTokens: session.lastTokens?.output,
-        costUsd: session.lastCost,
-        status: 'working',
-      },
-    );
   }
 
   private findSessionById(sessionId: string | undefined): SessionState | undefined {
@@ -461,7 +460,6 @@ export class OpencodeSDKDriver implements AISessionDriver {
           sessionId,
           accumulatedText: '',
           assistantMessageIds: new Set(),
-      lastUpdateTime: 0,
         });
         console.log(`[OPENCODE-SDK] Reconnected session ${sessionId}`);
         if (!this.eventLoopRunning) this.startEventLoop(client);
