@@ -169,6 +169,38 @@ describe('Config Module', () => {
       expect(config.session.staleTimeout).toBe(43200000);
       expect(config.session.cleanupInterval).toBe(1800000);
     });
+
+    it('should have default values for clouddev config', () => {
+      process.env.FEISHU_APP_ID = 'test_app_id';
+      process.env.FEISHU_APP_SECRET = 'test_app_secret';
+      delete process.env.CLOUDDEV_USERNAME;
+      delete process.env.CLOUDDEV_IMAGE_TYPE;
+      delete process.env.CLOUDDEV_RELAY_HOST;
+      delete process.env.CLOUDDEV_EMAIL_PASSWORD;
+
+      const config = loadConfig();
+
+      expect(config.clouddev.username).toBe('');
+      expect(config.clouddev.imageType).toBe('android');
+      expect(config.clouddev.relayHost).toBe('relay.xiaomi.com');
+      expect(config.clouddev.emailPassword).toBe('');
+    });
+
+    it('should load clouddev config from environment', () => {
+      process.env.FEISHU_APP_ID = 'test_app_id';
+      process.env.FEISHU_APP_SECRET = 'test_app_secret';
+      process.env.CLOUDDEV_USERNAME = 'testuser';
+      process.env.CLOUDDEV_IMAGE_TYPE = 'vela';
+      process.env.CLOUDDEV_RELAY_HOST = 'relay2.xiaomi.com';
+      process.env.CLOUDDEV_EMAIL_PASSWORD = 'secret123';
+
+      const config = loadConfig();
+
+      expect(config.clouddev.username).toBe('testuser');
+      expect(config.clouddev.imageType).toBe('vela');
+      expect(config.clouddev.relayHost).toBe('relay2.xiaomi.com');
+      expect(config.clouddev.emailPassword).toBe('secret123');
+    });
   });
 
   describe('getConfig', () => {
