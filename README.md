@@ -19,6 +19,7 @@
 
 - 在手机上随时查看服务器状态、执行命令
 - 随时随地与 Claude Code / opencode 对话，让 AI 帮你写代码、审查 PR、修 Bug
+- 一键连接工程云服务器，自动化 SSH 堡垒机认证流程
 - 不需要 SSH 客户端，一个飞书就够了
 - 支持 vim、htop 等交互式程序的远程操作
 
@@ -33,6 +34,14 @@
 - `!model` — 随时切换模型（opus / sonnet / haiku / gemini / gpt-5 等）
 - 流式输出 — AI 回复实时更新飞书卡片
 - 会话恢复 — Bot 重启后自动恢复上次对话
+
+### 工程云连接
+
+一键连接小米工程云服务器，自动化 SSH 堡垒机多步认证：
+
+- `!cloud` — 自动 SSH → 认证 → sync → 进入工程云，全程飞书卡片实时显示
+- 支持扫码认证（飞书卡片显示扫码链接）和密码认证（自动填入密码，提示输入 token）
+- 连接后与本地终端操作完全一致
 
 ### 远程终端
 
@@ -61,7 +70,7 @@ AI 回复以飞书卡片呈现，信息丰富：
 - 卡片底部显示模型、工作路径、Token 消耗、费用
 - 工具权限确认以飞书卡片交互
 - Markdown 表格自动转换为飞书原生表格组件
-- Claude 橙色、opencode 灰色、终端蓝色 — 一眼区分
+- Claude 橙色、opencode 灰色、终端蓝色、CloudDev 蓝色 — 一眼区分
 
 ### 终端输出优化
 
@@ -111,6 +120,10 @@ cp .env.example .env
 | `CLAUDE_TIMEOUT` | No | Claude 响应超时（ms） | `300000` |
 | `CLAUDE_DEFAULT_MODE` | No | 权限模式 `default` / `auto` | `default` |
 | `OPENCODE_TIMEOUT` | No | opencode 响应超时（ms） | `300000` |
+| `CLOUDDEV_USERNAME` | No | 工程云用户名（邮箱前缀） | — |
+| `CLOUDDEV_IMAGE_TYPE` | No | 镜像类型 `android` / `vela` | `android` |
+| `CLOUDDEV_RELAY_HOST` | No | 堡垒机地址 | `relay.xiaomi.com` |
+| `CLOUDDEV_EMAIL_PASSWORD` | No | 邮箱密码（自动填入，仍需手动输入 token） | — |
 
 </details>
 
@@ -146,6 +159,13 @@ npm run deploy
 | `!model <name>` | 切换模型（如 `!model sonnet`） |
 | `!model reset` | 恢复默认模型 |
 | 直接发文字 | 发送到当前活跃的 AI 会话 |
+
+### 工程云
+
+| 命令 | 说明 |
+|------|------|
+| `!cloud` | 连接工程云（使用 .env 配置） |
+| `!cloud <username>` | 指定用户名连接 |
 
 ### 终端操作
 
@@ -184,20 +204,25 @@ npm run deploy
                                          │
                           ┌──────────────▼──────────────────┐
                           │       消息路由 (index.ts)         │
-                          └──┬───────┬───────┬──────────────┘
-                             │       │       │
-                ┌────────────▼─┐ ┌───▼────┐ ┌▼──────────────┐
-                │  Terminal     │ │   AI   │ │    Session     │
-                │  Handler     │ │Handler │ │    Manager     │
-                └──────┬───────┘ └───┬────┘ └───────────────┘
-                       │             │
-                ┌──────▼───────┐ ┌───▼──────────────────────┐
-                │    tmux      │ │     AISessionDriver      │
-                │   (shell)    │ │  ┌─────────┐ ┌─────────┐ │
-                └──────────────┘ │  │ Claude  │ │opencode │ │
-                                 │  │  SDK    │ │  SDK    │ │
-                                 │  └─────────┘ └─────────┘ │
-                                 └──────────────────────────┘
+                          └──┬───────┬───────┬───────┬──────┘
+                             │       │       │       │
+                ┌────────────▼─┐ ┌───▼────┐ ┌▼────┐ ┌▼──────────────┐
+                │  Terminal     │ │   AI   │ │Cloud│ │    Session     │
+                │  Handler     │ │Handler │ │ Dev │ │    Manager     │
+                └──────┬───────┘ └───┬────┘ └──┬──┘ └───────────────┘
+                       │             │         │
+                ┌──────▼───────┐ ┌───▼───────┐ │
+                │    tmux      │ │ AISession │ │
+                │   (shell)    │◄┤  Driver   │ │
+                │              │ │ ┌───────┐ │ │
+                └──────▲───────┘ │ │Claude │ │ │
+                       │         │ │opencode│ │ │
+                       │         │ └───────┘ │ │
+                       │         └───────────┘ │
+                       │                       │
+                       └───── CloudDev ────────┘
+                              Connector
+                         (SSH 状态机 + 自动化)
 ```
 
 ### 核心模块
@@ -211,6 +236,8 @@ npm run deploy
 | 卡片构建 | `src/bot/card.ts` | 飞书卡片模板、表格转换 |
 | 飞书客户端 | `src/bot/feishu.ts` | API 封装、消息收发 |
 | 会话持久化 | `src/terminal/session.ts` | 会话存储、重连、清理 |
+| 工程云连接 | `src/clouddev/connector.ts` | SSH 状态机、自动化认证流程 |
+| URL 提取 | `src/clouddev/qr-extract.ts` | 终端文本 URL/认证检测 |
 
 ## 生产部署
 
@@ -255,11 +282,14 @@ src/
   bot/
     card.ts              # 飞书卡片构建
     feishu.ts            # 飞书 API 客户端
+  clouddev/
+    connector.ts         # 工程云 SSH 连接状态机
+    qr-extract.ts        # URL/认证提取
   handlers/
     ai.ts                # AI 命令处理
     terminal.ts          # 终端命令处理
     session.ts           # 会话管理命令
-    card-action.ts       # 卡片交互处理
+    clouddev.ts          # 工程云命令处理
   terminal/
     tmux.ts              # tmux 封装
     session.ts           # 会话持久化
