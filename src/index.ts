@@ -7,6 +7,7 @@ import { getShortcutKey } from './terminal/interactive';
 import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
+import { handleCloudCommand, forwardToClouddev } from './handlers/clouddev';
 import type { AIManager } from './ai/manager';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
 
@@ -88,6 +89,9 @@ async function handleCommand(
       case 'cd':
         await handleCd(conversationId, args.join(' '));
         return;
+      case 'cloud':
+        await handleCloudCommand(conversationId, args[0]);
+        return;
       case 'whoami':
         await feishuBot.sendText(conversationId, `Your User ID: ${senderId}`);
         return;
@@ -143,6 +147,14 @@ async function routeToActiveSession(conversationId: string, message: string): Pr
       handleOpencodeCommand(conversationId, message);
     } else if (session?.type === 'terminal' && session.tmuxName) {
       await handleTerminalInput(conversationId, activeSessionId, session.tmuxName, message, session.rawMode);
+    } else if (session?.type === 'clouddev' && session.tmuxName) {
+      if (session.clouddevStatus === 'connected') {
+        // Connected — behaves like a regular terminal
+        await handleTerminalInput(conversationId, activeSessionId, session.tmuxName, message, session.rawMode);
+      } else {
+        // Still connecting — forward input for auth (password, token, etc.)
+        await forwardToClouddev(conversationId, session.tmuxName, message);
+      }
     }
   } else {
     await handleClaudeCommand(conversationId, message);
@@ -231,7 +243,7 @@ async function main(): Promise<void> {
   await wsClient.start({ eventDispatcher });
 
   console.log('Feishu Terminal Bot connected via WebSocket');
-  console.log('Commands: !sh, !claude, !opencode, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
+  console.log('Commands: !sh, !claude, !opencode, !cloud, !new, !list, !switch, !kill, !interrupt, !mode, !key, !raw, !screen, !history, !esc, !enter, !tab, !whoami');
   console.log('Default: messages go to Claude');
 
   // Periodic cleanup of stale sessions
