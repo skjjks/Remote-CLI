@@ -33,7 +33,22 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
   const session = await sessionManager.createClouddevSession(conversationId);
   activeSessions.set(conversationId, session.id);
 
-  await feishuBot.sendText(conversationId, `Connecting to engineering cloud as ${username}...`);
+  // Create the initial progress card — will be updated in real-time
+  const initCard = smartCard.buildTextCard(
+    `Connecting to \`${config.clouddev.relayHost}\`...`,
+    { backend: 'clouddev', status: 'connecting' },
+  );
+  let cardMessageId = await feishuBot.sendCard(conversationId, initCard);
+  let authUrl: string | undefined;
+
+  const stateLabels: Record<string, string> = {
+    ssh_sent: 'SSH connecting...',
+    auth_waiting: 'waiting for auth',
+    sync_sent: 'syncing...',
+    domain_sent: 'entering cloud...',
+    connected: 'done',
+    failed: 'failed',
+  };
 
   // Set up callbacks
   const callbacks: ConnectorCallbacks = {
@@ -47,12 +62,7 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
 
     onAuthRequired: async (type, url, screenshot) => {
       if (type === 'qrcode' && url) {
-        // Send clickable link + screenshot to Feishu
-        const card = smartCard.buildTextCard(
-          `**工程云认证 — 请扫码**\n\n[点击扫码认证](${url})\n\n\`\`\`\n${(screenshot || '').slice(-500)}\n\`\`\``,
-          { backend: 'clouddev', status: 'auth' },
-        );
-        await feishuBot.sendCard(conversationId, card);
+        authUrl = url;
       } else if (type === 'password') {
         if (config.clouddev.emailPassword) {
           await feishuBot.sendText(conversationId, 'Password auto-filled. If a token is needed, type it here.');
@@ -62,14 +72,40 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
       }
     },
 
+    onScreenUpdate: async (state, screenshot) => {
+      if (!cardMessageId) return;
+      const status = stateLabels[state] || state;
+      const authLine = authUrl ? `\n\n[点击扫码认证](${authUrl})` : '';
+      const card = smartCard.buildTextCard(
+        `${authLine}\n\n\`\`\`\n${screenshot}\n\`\`\``,
+        { backend: 'clouddev', status },
+      );
+      feishuBot.updateCard(cardMessageId, card).catch(err =>
+        console.warn('[CLOUDDEV] Failed to update card:', err.message || err),
+      );
+    },
+
     onConnected: async () => {
       activeConnectors.delete(conversationId);
-      await feishuBot.sendText(conversationId, `Connected to engineering cloud!\nSession ${session.id} is now active. Send commands directly.`);
+      if (cardMessageId) {
+        const card = smartCard.buildTextCard(
+          `Connected to engineering cloud!\nSession ${session.id} is now active. Send commands directly.`,
+          { backend: 'clouddev', status: 'done' },
+        );
+        feishuBot.updateCard(cardMessageId, card).catch(err =>
+          console.warn('[CLOUDDEV] Failed to update card:', err.message || err),
+        );
+      }
     },
 
     onFailed: async (error) => {
       activeConnectors.delete(conversationId);
-      await feishuBot.sendCard(conversationId, smartCard.buildErrorCard(`CloudDev connection failed: ${error}`));
+      if (cardMessageId) {
+        const card = smartCard.buildErrorCard(`CloudDev connection failed: ${error}`);
+        feishuBot.updateCard(cardMessageId, card).catch(err =>
+          console.warn('[CLOUDDEV] Failed to update card:', err.message || err),
+        );
+      }
     },
   };
 

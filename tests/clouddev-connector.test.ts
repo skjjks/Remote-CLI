@@ -26,6 +26,7 @@ function createMockCallbacks(): ConnectorCallbacks & Record<string, ReturnType<t
   return {
     onStateChange: vi.fn(),
     onAuthRequired: vi.fn(),
+    onScreenUpdate: vi.fn(),
     onConnected: vi.fn(),
     onFailed: vi.fn(),
   };

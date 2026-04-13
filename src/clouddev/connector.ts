@@ -14,6 +14,7 @@ export type ConnectorState =
 export interface ConnectorCallbacks {
   onStateChange: (state: ConnectorState, message: string) => void;
   onAuthRequired: (type: 'qrcode' | 'password', url?: string, screenshot?: string) => void;
+  onScreenUpdate: (state: ConnectorState, screenshot: string) => void;
   onConnected: () => void;
   onFailed: (error: string) => void;
 }
@@ -110,6 +111,9 @@ export class CloudDevConnector {
     // Use last N lines for state detection — capturePane returns full scrollback
     // which still contains old auth prompts even after auth succeeds.
     const tail = this.tailLines(captured, 15);
+
+    // Send screen update on every poll so the user sees real-time terminal output
+    this.callbacks.onScreenUpdate(this.state, tail);
 
     switch (this.state) {
       case 'ssh_sent':
