@@ -3,6 +3,7 @@ import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
 import { activeSessions, commandHistory, modelOverrides } from '../state';
 import { getClaudeManager, getOpencodeManager } from './ai';
+import { getModelShortcuts, resolveModel, getPopularModels } from '../ai/models';
 
 // ── Session management handlers ──
 
@@ -190,32 +191,6 @@ export async function handleHistory(conversationId: string): Promise<void> {
   await feishuBot.sendText(conversationId, `Command history:\n${lines.join('\n')}`);
 }
 
-// Model shortcuts — read from env vars with fallback
-const MODEL_SHORTCUTS: Record<string, string> = {
-  opus: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'claude-opus-4-6',
-  sonnet: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'claude-sonnet-4-6',
-  haiku: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
-};
-
-// Popular models to show in the list
-const POPULAR_MODELS = [
-  { shortcut: 'opus', model: MODEL_SHORTCUTS.opus, desc: 'Most capable' },
-  { shortcut: 'sonnet', model: MODEL_SHORTCUTS.sonnet, desc: 'Balanced' },
-  { shortcut: 'haiku', model: MODEL_SHORTCUTS.haiku, desc: 'Fast & cheap' },
-];
-
-// Opencode model shortcuts (provider/model format from opencode config)
-const OC_MODEL_SHORTCUTS: Record<string, string> = {
-  opus: 'Mify-Anthropic/ppio/pa/claude-opus-4-6',
-  sonnet: 'google/antigravity-claude-sonnet-4-6',
-  'opus-think': 'google/antigravity-claude-opus-4-6-thinking',
-  gpt5: 'Mify-OpenAI/azure_openai/gpt-5.1-codex',
-  kimi: 'Mify-Kimi/volcengine_maas/kimi-k2-250711',
-  gemini: 'google/gemini-3-pro-preview',
-  'gemini-flash': 'google/gemini-3-flash-preview',
-  mimo: 'Mify-Xiaomi/xiaomi/mimo-v2-flash',
-};
-
 export async function handleModel(conversationId: string, model?: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
@@ -232,16 +207,11 @@ export async function handleModel(conversationId: string, model?: string): Promi
       '',
     ];
 
-    if (isOpencode) {
-      lines.push('**Opencode models:**');
-      Object.entries(OC_MODEL_SHORTCUTS).forEach(([k, v]) => {
-        lines.push(`  \`!model ${k}\` → ${v}`);
-      });
-    } else {
-      lines.push('**Claude models:**');
-      POPULAR_MODELS.forEach(m => {
-        lines.push(`  \`!model ${m.shortcut}\` → ${m.model} (${m.desc})`);
-      });
+    const label = isOpencode ? 'Opencode' : 'Claude';
+    lines.push(`**${label} models:**`);
+    for (const m of getPopularModels(isOpencode ? 'opencode' : 'claude')) {
+      const suffix = m.desc ? ` (${m.desc})` : '';
+      lines.push(`  \`!model ${m.shortcut}\` → ${m.model}${suffix}`);
     }
 
     lines.push('', 'Or use full model name directly', '`!model reset` to clear override');
@@ -256,8 +226,8 @@ export async function handleModel(conversationId: string, model?: string): Promi
   }
 
   // Resolve shortcuts based on backend
-  const shortcuts = isOpencode ? OC_MODEL_SHORTCUTS : MODEL_SHORTCUTS;
-  const resolved = shortcuts[model.toLowerCase()] || model;
+  const backend = isOpencode ? 'opencode' as const : 'claude' as const;
+  const resolved = resolveModel(backend, model);
   modelOverrides.set(conversationId, resolved);
   await feishuBot.sendText(conversationId, `Model set to: **${resolved}**\nNext message will use this model.`);
 }
