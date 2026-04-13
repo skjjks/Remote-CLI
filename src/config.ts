@@ -25,15 +25,20 @@ export interface Config {
   session: {
     prefix: string;
     dataDir: string;
+    staleTimeout: number;
+    cleanupInterval: number;
   };
   claude: {
     timeout: number;
     defaultMode: 'default' | 'auto';
     cardUpdateInterval: number;
+    permissionTimeout: number;
   };
   opencode: {
     timeout: number;
     defaultMode: 'default' | 'auto';
+    cardUpdateInterval: number;
+    permissionTimeout: number;
   };
   timing: {
     shellCaptureDelay: number;
@@ -95,15 +100,20 @@ export function loadConfig(): Config {
     session: {
       prefix: getEnvVar('SESSION_PREFIX', 'remote-cli'),
       dataDir: getEnvVar('DATA_DIR', path.join(process.cwd(), 'data')),
+      staleTimeout: getEnvVarInt('SESSION_STALE_TIMEOUT', 86400000),
+      cleanupInterval: getEnvVarInt('SESSION_CLEANUP_INTERVAL', 3600000),
     },
     claude: {
       timeout: getEnvVarInt('CLAUDE_TIMEOUT', 300000),
       defaultMode: (getEnvVar('CLAUDE_DEFAULT_MODE', 'default') as 'default' | 'auto'),
       cardUpdateInterval: getEnvVarInt('CLAUDE_CARD_UPDATE_INTERVAL', 500),
+      permissionTimeout: getEnvVarInt('CLAUDE_PERMISSION_TIMEOUT', 300000),
     },
     opencode: {
       timeout: getEnvVarInt('OPENCODE_TIMEOUT', 300000),
       defaultMode: (getEnvVar('OPENCODE_DEFAULT_MODE', 'default') as 'default' | 'auto'),
+      cardUpdateInterval: getEnvVarInt('OPENCODE_CARD_UPDATE_INTERVAL', 500),
+      permissionTimeout: getEnvVarInt('OPENCODE_PERMISSION_TIMEOUT', 300000),
     },
     timing: {
       shellCaptureDelay: getEnvVarInt('TIMING_SHELL_CAPTURE_DELAY', 1500),

@@ -61,7 +61,7 @@ describe('Config Module', () => {
 
       expect(config.server.port).toBe(3000);
       expect(config.server.host).toBe('0.0.0.0');
-      expect(config.terminal.cols).toBe(80);
+       expect(config.terminal.cols).toBe(200);
       expect(config.terminal.rows).toBe(24);
       expect(config.terminal.shell).toBe('/bin/bash');
       expect(config.terminal.historyLimit).toBe(50000);
@@ -132,6 +132,42 @@ describe('Config Module', () => {
       process.env.PORT = 'not_a_number';
 
       expect(() => loadConfig()).toThrow('must be a valid integer');
+    });
+
+    it('should have default values for new config fields', () => {
+      process.env.FEISHU_APP_ID = 'test_app_id';
+      process.env.FEISHU_APP_SECRET = 'test_app_secret';
+      delete process.env.CLAUDE_PERMISSION_TIMEOUT;
+      delete process.env.OPENCODE_CARD_UPDATE_INTERVAL;
+      delete process.env.OPENCODE_PERMISSION_TIMEOUT;
+      delete process.env.SESSION_STALE_TIMEOUT;
+      delete process.env.SESSION_CLEANUP_INTERVAL;
+
+      const config = loadConfig();
+
+      expect(config.claude.permissionTimeout).toBe(300000);
+      expect(config.opencode.cardUpdateInterval).toBe(500);
+      expect(config.opencode.permissionTimeout).toBe(300000);
+      expect(config.session.staleTimeout).toBe(86400000);
+      expect(config.session.cleanupInterval).toBe(3600000);
+    });
+
+    it('should load new config fields from environment', () => {
+      process.env.FEISHU_APP_ID = 'test_app_id';
+      process.env.FEISHU_APP_SECRET = 'test_app_secret';
+      process.env.CLAUDE_PERMISSION_TIMEOUT = '60000';
+      process.env.OPENCODE_CARD_UPDATE_INTERVAL = '750';
+      process.env.OPENCODE_PERMISSION_TIMEOUT = '120000';
+      process.env.SESSION_STALE_TIMEOUT = '43200000';
+      process.env.SESSION_CLEANUP_INTERVAL = '1800000';
+
+      const config = loadConfig();
+
+      expect(config.claude.permissionTimeout).toBe(60000);
+      expect(config.opencode.cardUpdateInterval).toBe(750);
+      expect(config.opencode.permissionTimeout).toBe(120000);
+      expect(config.session.staleTimeout).toBe(43200000);
+      expect(config.session.cleanupInterval).toBe(1800000);
     });
   });
 
