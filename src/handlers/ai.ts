@@ -3,7 +3,8 @@ import { getSessionManager, SessionInfo } from '../terminal/session';
 import { AIManager, AIManagerCallbacks } from '../ai/manager';
 import { ClaudeSDKDriver } from '../ai/drivers/claude-sdk';
 import { OpencodeSDKDriver } from '../ai/drivers/opencode-sdk';
-import { activeSessions, smartCard, pendingRequests } from '../state';
+import { activeSessions, smartCard } from '../state';
+import { resolvePendingInput } from '../ai/shared';
 
 // ── Shared AI callbacks ──
 
@@ -63,50 +64,24 @@ export function getOpencodeManager(): AIManager {
 
 type AIBackendType = 'claude' | 'opencode';
 
-async function handleAICommand(
+/**
+ * Find or create an AI session for the given conversation and backend.
+ * Handles session lookup, reconnection, and creation.
+ *
+ * When a new session must be started asynchronously, `firstPrompt` is
+ * sent automatically after the session is ready and `ready` is false.
+ * The caller should return without sending the message itself.
+ */
+async function ensureAISession(
   conversationId: string,
-  prompt: string,
-  backend: AIBackendType
-): Promise<void> {
-  const feishuBot = getFeishuBot();
-  if (!prompt) {
-    await feishuBot.sendText(conversationId, `Usage: !${backend} <prompt> or just send a message`);
-    return;
-  }
-
-  // Check for pending permission/question responses.
-  // If the user sends a number (0-2) and there is a pending request for this
-  // conversation, resolve it instead of forwarding to the AI backend.
-  const pendingKeys = [...pendingRequests.keys()].filter(k => {
-    const req = pendingRequests.get(k);
-    return req?.conversationId === conversationId;
-  });
-
-  if (pendingKeys.length > 0 && /^\d+$/.test(prompt.trim())) {
-    const key = pendingKeys[0];
-    const pending = pendingRequests.get(key)!;
-    pendingRequests.delete(key);
-
-    const choice = parseInt(prompt.trim(), 10);
-    if (pending.type === 'permission') {
-      if (choice === 0) {
-        pending.resolve({ behavior: 'allow' });
-      } else if (choice === 2) {
-        pending.resolve({ behavior: 'allow', updatedPermissions: [] });
-      } else {
-        pending.resolve({ behavior: 'deny', message: 'User denied permission' });
-      }
-    } else if (pending.type === 'question') {
-      // For opencode questions, send the selected option index
-      pending.resolve(choice);
-    }
-    return;
-  }
-
+  backend: AIBackendType,
+  firstPrompt: string,
+): Promise<{ manager: AIManager; session: SessionInfo; ready: boolean }> {
   const sessionManager = getSessionManager();
   const manager = backend === 'opencode' ? getOpencodeManager() : getClaudeManager();
+  const label = backend === 'opencode' ? 'opencode' : 'Claude';
+  const feishuBot = getFeishuBot();
 
-  // Find or create a session for this backend
   const activeSessionId = activeSessions.get(conversationId);
   let session: SessionInfo | undefined;
 
@@ -121,23 +96,20 @@ async function handleAICommand(
       : sessionManager.createClaudeSession(conversationId);
     activeSessions.set(conversationId, session.id);
 
-    // Non-blocking: start session in background, send message when ready
-    const label = backend === 'opencode' ? 'opencode' : 'Claude';
     feishuBot.sendText(conversationId, `Starting ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send start notification:', err.message || err));
     manager.startSession(conversationId, `${backend}-${session.id}`).then(() => {
-      // After session creation, persist the SDK session ID
       const sdkSessionId = manager.getSessionId(conversationId);
       if (sdkSessionId) {
         sessionManager.updateClaudeSessionId(session!.id, sdkSessionId);
       }
-      manager.sendMessage(conversationId, prompt).catch(err => {
+      manager.sendMessage(conversationId, firstPrompt).catch(err => {
         console.error(`Failed to send message to ${label}:`, err);
       });
     }).catch(err => {
       console.error(`Failed to start ${label} session:`, err);
       feishuBot.sendCard(conversationId, smartCard.buildErrorCard(String(err))).catch(err2 => console.warn('[FEISHU] Failed to send error card:', err2.message || err2));
     });
-    return;
+    return { manager, session, ready: false };
   }
 
   // Update activity timestamp
@@ -146,48 +118,67 @@ async function handleAICommand(
   // Check if session is still alive
   const alive = await manager.isSessionAlive(conversationId);
   const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
-  console.log(`${logPrefix} session alive=${alive}, sdkSessionId=${session.claudeSessionId || 'none'}, prompt="${prompt.slice(0, 20)}"`);
+  console.log(`${logPrefix} session alive=${alive}, sdkSessionId=${session.claudeSessionId || 'none'}`);
 
   if (!alive) {
-    // Try to resume existing SDK session if we have a session ID
     if (session.claudeSessionId) {
-      const label = backend === 'opencode' ? 'opencode' : 'Claude';
       console.log(`${logPrefix} Resuming session ${session.claudeSessionId}`);
       feishuBot.sendText(conversationId, `Resuming ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send resume notification:', err.message || err));
-      // Reconnect registers the session ID in the driver for resume
       await manager.reconnectSession(conversationId, session.claudeSessionId);
-      manager.sendMessage(conversationId, prompt).catch(err => {
-        console.error(`Failed to send message to ${label}:`, err);
-      });
-      return;
+      return { manager, session, ready: true };
     }
 
-    // No existing session ID — start fresh
-    const label = backend === 'opencode' ? 'opencode' : 'Claude';
     feishuBot.sendText(conversationId, `Starting new ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send restart notification:', err.message || err));
     manager.startSession(conversationId, `${backend}-${session.id}-${Date.now()}`).then(() => {
       const sdkSessionId = manager.getSessionId(conversationId);
       if (sdkSessionId) {
         sessionManager.updateClaudeSessionId(session!.id, sdkSessionId);
       }
-      manager.sendMessage(conversationId, prompt).catch(err => {
+      manager.sendMessage(conversationId, firstPrompt).catch(err => {
         console.error(`Failed to send message to ${label}:`, err);
       });
     }).catch(err => {
       console.error(`Failed to start ${label} session:`, err);
     });
+    return { manager, session, ready: false };
+  }
+
+  return { manager, session, ready: true };
+}
+
+async function handleAICommand(
+  conversationId: string,
+  prompt: string,
+  backend: AIBackendType
+): Promise<void> {
+  const feishuBot = getFeishuBot();
+  if (!prompt) {
+    await feishuBot.sendText(conversationId, `Usage: !${backend} <prompt> or just send a message`);
     return;
   }
 
-  // Existing session -- check if this is a menu selection (single number)
+  // Check for pending permission/question responses
+  if (resolvePendingInput(conversationId, prompt)) {
+    return;
+  }
+
+  // ensureAISession sends firstPrompt automatically when starting a new session
+  const { manager, ready } = await ensureAISession(conversationId, backend, prompt);
+
+  if (!ready) {
+    // New session starting asynchronously — prompt will be sent after start completes
+    return;
+  }
+
+  // Existing session — check if this is a menu selection (single number)
   const num = parseInt(prompt, 10);
+  const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
   if (!isNaN(num) && prompt.trim() === String(num)) {
     console.log(`${logPrefix} selectMenuOption(${num})`);
     manager.selectMenuOption(conversationId, num).catch(err => {
       console.error('Failed to select menu option:', err);
     });
   } else {
-    // Regular message
     manager.sendMessage(conversationId, prompt).catch(err => {
       console.error(`Failed to send message to ${backend}:`, err);
     });
