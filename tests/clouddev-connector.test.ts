@@ -88,7 +88,8 @@ https://auth.xiaomi.com/scan?token=abc123
     await connector.poll();
 
     expect(connector.getState()).toBe('auth_waiting');
-    expect(callbacks.onAuthRequired).toHaveBeenCalledWith('password', undefined, expect.any(String));
+    expect(callbacks.onAuthRequired).toHaveBeenCalledWith('qrcode', undefined, expect.any(String));
+    // Password auto-filled
     expect(tmux.sendLiteralKeys).toHaveBeenCalledWith('test-tmux', 'mypassword');
     expect(tmux.sendKeys).toHaveBeenCalledWith('test-tmux', 'Enter');
   });

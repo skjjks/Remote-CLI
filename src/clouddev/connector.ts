@@ -137,15 +137,19 @@ export class CloudDevConnector {
 
     this.setState('auth_waiting', 'Authentication required');
 
-    if (authInfo.type === 'qrcode') {
-      this.callbacks.onAuthRequired('qrcode', authInfo.url, captured);
-    } else if (authInfo.type === 'password') {
-      this.callbacks.onAuthRequired('password', undefined, captured);
-      if (this.emailPassword && !this.authSent) {
-        this.authSent = true;
-        await tmux.sendLiteralKeys(this.tmuxName, this.emailPassword);
-        await tmux.sendKeys(this.tmuxName, 'Enter');
-      }
+    // Extract QR URL if present (for display in card)
+    const { extractUrls } = await import('./qr-extract');
+    const urls = extractUrls(captured);
+    const qrUrl = urls.find(u => /qr[./]/.test(u) || /scan/.test(u));
+
+    // Always notify both auth methods — card will show QR link + password hint
+    this.callbacks.onAuthRequired('qrcode', qrUrl, captured);
+
+    // Auto-fill password if configured and password prompt is visible
+    if (this.emailPassword && !this.authSent && /password\s*:/i.test(captured)) {
+      this.authSent = true;
+      await tmux.sendLiteralKeys(this.tmuxName, this.emailPassword);
+      await tmux.sendKeys(this.tmuxName, 'Enter');
     }
   }
 

@@ -60,16 +60,17 @@ export async function handleCloudCommand(conversationId: string, usernameOverrid
         : 'connecting');
     },
 
-    onAuthRequired: async (type, url, screenshot) => {
-      if (type === 'qrcode' && url) {
-        authUrl = url;
-      } else if (type === 'password') {
-        if (config.clouddev.emailPassword) {
-          await feishuBot.sendText(conversationId, 'Password auto-filled. If a token is needed, type it here.');
-        } else {
-          await feishuBot.sendText(conversationId, 'Password required — type your email password here.');
-        }
+    onAuthRequired: async (_type, url, _screenshot) => {
+      if (url) authUrl = url;
+      // Auth hint: show both options (QR link + password status)
+      const lines: string[] = [];
+      if (url) lines.push(`[点击扫码认证](${url})`);
+      if (config.clouddev.emailPassword) {
+        lines.push('密码已自动填入，请输入小米人 token 验证码');
+      } else {
+        lines.push('请输入邮箱密码，或使用扫码认证');
       }
+      await feishuBot.sendText(conversationId, lines.join('\n'));
     },
 
     onScreenUpdate: async (state, screenshot) => {
