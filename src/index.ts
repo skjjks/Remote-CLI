@@ -3,9 +3,9 @@ import { getConfig } from './config';
 import { getFeishuBot } from './bot/feishu';
 import { getSessionManager } from './terminal/session';
 import * as tmux from './terminal/tmux';
-import { isInteractiveProgram, getShortcutKey } from './terminal/interactive';
+import { getShortcutKey } from './terminal/interactive';
 import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
-import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, extractCommandOutput } from './handlers/terminal';
+import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
 
@@ -122,66 +122,29 @@ async function handleCommand(
     }
   }
 
-  // Default: send to active session
+  // Route to active session
+  await routeToActiveSession(conversationId, trimmedMessage);
+}
+
+/**
+ * Route a message to the user's active session (claude/opencode/terminal).
+ * If no session exists, creates a Claude session by default.
+ */
+async function routeToActiveSession(conversationId: string, message: string): Promise<void> {
   const activeSessionId = activeSessions.get(conversationId);
   if (activeSessionId !== undefined) {
     const sessionManager = getSessionManager();
     const session = sessionManager.getSession(activeSessionId);
 
     if (session?.type === 'claude') {
-      // Route through handleClaudeCommand which handles reconnection
-      handleClaudeCommand(conversationId, trimmedMessage);
+      handleClaudeCommand(conversationId, message);
     } else if (session?.type === 'opencode') {
-      handleOpencodeCommand(conversationId, trimmedMessage);
+      handleOpencodeCommand(conversationId, message);
     } else if (session?.type === 'terminal' && session.tmuxName) {
-      const cmd = trimmedMessage;
-      const sid = activeSessionId;
-      const tmuxName = session.tmuxName;
-
-      // Determine if raw mode is active
-      let useRawMode = session.rawMode === true;
-      if (session.rawMode === undefined) {
-        try {
-          const currentCmd = await tmux.getCurrentCommand(tmuxName);
-          useRawMode = isInteractiveProgram(currentCmd);
-        } catch (err) {
-          console.warn('[TMUX] Failed to detect current command:', err instanceof Error ? err.message : err);
-          useRawMode = false;
-        }
-      }
-
-      // Use literal mode for user-provided text to prevent tmux key name interpretation
-      const startTime = Date.now();
-      await tmux.sendLiteralKeys(tmuxName, cmd);
-      if (!useRawMode) {
-        await tmux.sendKeys(tmuxName, 'Enter');
-      }
-
-      // Capture screen feedback
-      const cfg = getConfig();
-      const delay = useRawMode ? cfg.timing.rawModeCaptureDelay : cfg.timing.shellCaptureDelay;
-      setTimeout(async () => {
-        try {
-          const captured = await tmux.capturePane(tmuxName);
-          const durationMs = Date.now() - startTime;
-          if (useRawMode) {
-            // Raw mode: show full screen capture
-            const card = smartCard.buildTerminalOutputCard(captured, { sessionId: sid, durationMs });
-            await feishuBot.sendCard(conversationId, card);
-          } else {
-            // Normal mode: extract command output
-            const { output, cwd } = extractCommandOutput(captured, cmd);
-            const card = smartCard.buildTerminalOutputCard(output, { command: cmd, sessionId: sid, cwd, durationMs });
-            await feishuBot.sendCard(conversationId, card);
-          }
-        } catch (err) {
-          console.error('Failed to capture pane:', err);
-        }
-      }, delay);
+      await handleTerminalInput(conversationId, activeSessionId, session.tmuxName, message, session.rawMode);
     }
   } else {
-    // No active session — create Claude session by default
-    await handleClaudeCommand(conversationId, trimmedMessage);
+    await handleClaudeCommand(conversationId, message);
   }
 }
 

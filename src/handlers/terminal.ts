@@ -2,6 +2,7 @@ import { getFeishuBot } from '../bot/feishu';
 import { getConfig } from '../config';
 import { getSessionManager, SessionInfo } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
+import { isInteractiveProgram } from '../terminal/interactive';
 import { activeSessions, pendingPrompts, smartCard, addToHistory } from '../state';
 
 // ── Helpers ──
@@ -234,4 +235,54 @@ export async function handleRawMode(conversationId: string, arg?: string): Promi
     sessionManager.updateRawMode(activeSessionId, true);
     await feishuBot.sendText(conversationId, 'Raw mode on — keystrokes sent without Enter');
   }
+}
+
+/**
+ * Route a user message to an active terminal session.
+ * Handles raw mode detection, literal key sending, and screen capture.
+ */
+export async function handleTerminalInput(
+  conversationId: string,
+  sessionId: number,
+  tmuxName: string,
+  message: string,
+  rawMode: boolean | undefined,
+): Promise<void> {
+  const feishuBot = getFeishuBot();
+  const cfg = getConfig();
+
+  let useRawMode = rawMode === true;
+  if (rawMode === undefined) {
+    try {
+      const currentCmd = await tmux.getCurrentCommand(tmuxName);
+      useRawMode = isInteractiveProgram(currentCmd);
+    } catch (err) {
+      console.warn('[TMUX] Failed to detect current command:', err instanceof Error ? err.message : err);
+      useRawMode = false;
+    }
+  }
+
+  const startTime = Date.now();
+  await tmux.sendLiteralKeys(tmuxName, message);
+  if (!useRawMode) {
+    await tmux.sendKeys(tmuxName, 'Enter');
+  }
+
+  const delay = useRawMode ? cfg.timing.rawModeCaptureDelay : cfg.timing.shellCaptureDelay;
+  setTimeout(async () => {
+    try {
+      const captured = await tmux.capturePane(tmuxName);
+      const durationMs = Date.now() - startTime;
+      if (useRawMode) {
+        const card = smartCard.buildTerminalOutputCard(captured, { sessionId, durationMs });
+        await feishuBot.sendCard(conversationId, card);
+      } else {
+        const { output, cwd } = extractCommandOutput(captured, message);
+        const card = smartCard.buildTerminalOutputCard(output, { command: message, sessionId, cwd, durationMs });
+        await feishuBot.sendCard(conversationId, card);
+      }
+    } catch (err) {
+      console.error('Failed to capture pane:', err);
+    }
+  }, delay);
 }
