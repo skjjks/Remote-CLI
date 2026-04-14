@@ -58,6 +58,17 @@ vi.mock('@opencode-ai/sdk', () => ({
   }),
 }));
 
+// Intercept `new Function('specifier', 'return import(specifier)')` used by loadSDK
+// to bypass the CJS dynamic import hack and use vitest's mockable import() instead.
+const OriginalFunction = globalThis.Function;
+vi.stubGlobal('Function', function (...args: any[]) {
+  // Detect the dynamic import pattern: new Function('specifier', 'return import(specifier)')
+  if (args.length === 2 && args[0] === 'specifier' && String(args[1]).includes('import(')) {
+    return (specifier: string) => import(specifier);
+  }
+  return new OriginalFunction(...args);
+} as any);
+
 // --- Import after mocks ----------------------------------------------------------
 
 import { OpencodeSDKDriver } from '../src/ai/drivers/opencode-sdk';
