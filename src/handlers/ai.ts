@@ -139,8 +139,9 @@ async function ensureAISession(
       return { manager, session, ready: true };
     }
 
+    // Reuse existing session record — start a new SDK session but keep the same session ID
     feishuBot.sendText(conversationId, `Starting new ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send restart notification:', err.message || err));
-    manager.startSession(conversationId, `${backend}-${session.id}-${Date.now()}`).then(() => {
+    manager.startSession(conversationId, `${backend}-${session.id}`).then(() => {
       const sdkSessionId = manager.getSessionId(conversationId);
       if (sdkSessionId) {
         sessionManager.updateClaudeSessionId(session!.id, sdkSessionId);
