@@ -88,7 +88,7 @@ export async function handleShellCommand(conversationId: string, command: string
     session = sessionManager.getSession(activeSessionId);
   }
 
-  if (!session || session.type !== 'terminal') {
+  if (!session || (session.type !== 'terminal' && session.type !== 'clouddev')) {
     session = await sessionManager.createSession(conversationId);
     activeSessions.set(conversationId, session.id);
   }
@@ -141,7 +141,7 @@ export async function handleSpecialKey(conversationId: string, key?: string): Pr
 
   const sessionManager = getSessionManager();
   const session = sessionManager.getSession(activeSessionId);
-  if (session?.type !== 'terminal') {
+  if (session?.type !== 'terminal' && session?.type !== 'clouddev') {
     await feishuBot.sendText(conversationId, '!key only works in Terminal mode');
     return;
   }
@@ -167,7 +167,7 @@ export async function handleShortcutKey(conversationId: string, tmuxKey: string)
 
   const sessionManager = getSessionManager();
   const session = sessionManager.getSession(activeSessionId);
-  if (session?.type !== 'terminal' || !session.tmuxName) {
+  if ((session?.type !== 'terminal' && session?.type !== 'clouddev') || !session?.tmuxName) {
     await feishuBot.sendText(conversationId, 'Shortcut keys only work in Terminal mode');
     return;
   }
@@ -198,7 +198,7 @@ export async function handleScreen(conversationId: string): Promise<void> {
 
   const sessionManager = getSessionManager();
   const session = sessionManager.getSession(activeSessionId);
-  if (session?.type !== 'terminal' || !session.tmuxName) {
+  if ((session?.type !== 'terminal' && session?.type !== 'clouddev') || !session?.tmuxName) {
     await feishuBot.sendText(conversationId, '!screen only works in Terminal mode');
     return;
   }
@@ -223,7 +223,7 @@ export async function handleRawMode(conversationId: string, arg?: string): Promi
 
   const sessionManager = getSessionManager();
   const session = sessionManager.getSession(activeSessionId);
-  if (session?.type !== 'terminal') {
+  if (session?.type !== 'terminal' && session?.type !== 'clouddev') {
     await feishuBot.sendText(conversationId, '!raw only works in Terminal mode');
     return;
   }
