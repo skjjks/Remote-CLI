@@ -138,6 +138,27 @@ async function ensureAISession(
   // Update activity timestamp
   sessionManager.updateLastActivity(session.id);
 
+  // New session without SDK session ID — needs fresh start (e.g., after !new)
+  if (!session.sdkSessionId) {
+    const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
+    console.log(`${logPrefix} Session ${session.id} has no SDK session, starting fresh`);
+    // Kill any stale driver session for this conversation so we get a clean start
+    await manager.killSession(conversationId);
+    feishuBot.sendText(conversationId, `Starting ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send start notification:', err.message || err));
+    manager.startSession(conversationId, `${backend}-${session.id}`).then(() => {
+      const sdkSessionId = manager.getSessionId(conversationId);
+      if (sdkSessionId) {
+        sessionManager.updateSdkSessionId(session!.id, sdkSessionId);
+      }
+      manager.sendMessage(conversationId, firstPrompt).catch(err => {
+        console.error(`Failed to send message to ${label}:`, err);
+      });
+    }).catch(err => {
+      console.error(`Failed to start ${label} session:`, err);
+    });
+    return { manager, session, ready: false };
+  }
+
   // Check if session is still alive
   const alive = await manager.isSessionAlive(conversationId);
   const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';

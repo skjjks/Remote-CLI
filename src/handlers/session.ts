@@ -11,19 +11,6 @@ export async function handleNewSession(conversationId: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
 
-  // Kill existing AI session in the driver so the new session gets a fresh SDK session
-  const activeSessionId = activeSessions.get(conversationId);
-  if (activeSessionId !== undefined) {
-    const current = sessionManager.getSession(activeSessionId);
-    if (current?.type === 'claude') {
-      const claudeManager = getClaudeManager();
-      await claudeManager.killSession(conversationId);
-    } else if (current?.type === 'opencode') {
-      const opencodeManager = getOpencodeManager();
-      await opencodeManager.killSession(conversationId);
-    }
-  }
-
   const session = sessionManager.createClaudeSession(conversationId);
   activeSessions.set(conversationId, session.id);
 
