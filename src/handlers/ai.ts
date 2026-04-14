@@ -89,6 +89,19 @@ async function ensureAISession(
     session = sessionManager.getSession(activeSessionId);
   }
 
+  // If active session is a different type, look for an existing session of the right type
+  if (session && session.type !== backend) {
+    const existing = sessionManager.getSessions().find(
+      s => s.type === backend && s.conversationId === conversationId,
+    );
+    if (existing) {
+      session = existing;
+      activeSessions.set(conversationId, session.id);
+    } else {
+      session = undefined; // force creation below
+    }
+  }
+
   // Create new session if needed
   if (!session || session.type !== backend) {
     session = backend === 'opencode'
