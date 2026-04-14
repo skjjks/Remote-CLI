@@ -53,7 +53,7 @@ async function handleCommand(
         await handleOpencodeCommand(conversationId, args.join(' '));
         return;
       case 'new':
-        await handleNewSession(conversationId);
+        await handleNewSession(conversationId, args[0]);
         return;
       case 'list':
         await handleListSessions(conversationId);

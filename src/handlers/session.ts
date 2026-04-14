@@ -7,14 +7,18 @@ import { getModelShortcuts, resolveModel, getPopularModels } from '../ai/models'
 
 // ── Session management handlers ──
 
-export async function handleNewSession(conversationId: string): Promise<void> {
+export async function handleNewSession(conversationId: string, backend?: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
 
-  const session = sessionManager.createClaudeSession(conversationId);
+  const isOpencode = backend === 'opencode' || backend === 'oc';
+  const session = isOpencode
+    ? sessionManager.createOpencodeSession(conversationId)
+    : sessionManager.createClaudeSession(conversationId);
   activeSessions.set(conversationId, session.id);
 
-  await feishuBot.sendText(conversationId, `Created Claude session ${session.id}`);
+  const label = isOpencode ? 'opencode' : 'Claude';
+  await feishuBot.sendText(conversationId, `Created ${label} session ${session.id}`);
 }
 
 export async function handleListSessions(conversationId: string): Promise<void> {
