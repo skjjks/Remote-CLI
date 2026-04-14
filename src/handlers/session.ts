@@ -11,13 +11,21 @@ export async function handleNewSession(conversationId: string, backend?: string)
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
 
-  const isOpencode = backend === 'opencode' || backend === 'oc';
-  const session = isOpencode
-    ? sessionManager.createOpencodeSession(conversationId)
-    : sessionManager.createClaudeSession(conversationId);
-  activeSessions.set(conversationId, session.id);
+  let session;
+  let label: string;
 
-  const label = isOpencode ? 'opencode' : 'Claude';
+  if (backend === 'claude') {
+    session = sessionManager.createClaudeSession(conversationId);
+    label = 'Claude';
+  } else if (backend === 'opencode' || backend === 'oc') {
+    session = sessionManager.createOpencodeSession(conversationId);
+    label = 'opencode';
+  } else {
+    session = await sessionManager.createSession(conversationId);
+    label = 'terminal';
+  }
+
+  activeSessions.set(conversationId, session.id);
   await feishuBot.sendText(conversationId, `Created ${label} session ${session.id}`);
 }
 

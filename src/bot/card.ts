@@ -411,7 +411,7 @@ export class SmartCardBuilder {
       '| `!opencode <prompt>` / `!oc` | Start/send to opencode |',
       '| `!cloud` / `!cloud <user>` | Connect to engineering cloud |',
       '| `!sh <cmd>` | Run shell command |',
-      '| `!new` / `!new opencode` | New AI session |',
+      '| `!new` / `!new claude` / `!new oc` | New terminal / Claude / opencode session |',
       '| `!list` | List all sessions |',
       '| `!switch <id>` | Switch session |',
       '| `!kill <id>` | Kill session |',
