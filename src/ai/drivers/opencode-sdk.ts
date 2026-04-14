@@ -104,13 +104,14 @@ export class OpencodeSDKDriver implements AISessionDriver {
       agent: 'build',
       tools: { question: false },
     };
-    // Apply model override if set (format: "ProviderName/modelID")
+    // Apply model: override > env default > opencode's own default
     const modelOverride = modelOverrides.get(conversationId);
-    if (modelOverride && modelOverride.includes('/')) {
-      const slashIdx = modelOverride.indexOf('/');
+    const modelStr = modelOverride || process.env.OPENCODE_DEFAULT_MODEL || '';
+    if (modelStr && modelStr.includes('/')) {
+      const slashIdx = modelStr.indexOf('/');
       promptBody.model = {
-        providerID: modelOverride.slice(0, slashIdx),
-        modelID: modelOverride.slice(slashIdx + 1),
+        providerID: modelStr.slice(0, slashIdx),
+        modelID: modelStr.slice(slashIdx + 1),
       };
     }
 

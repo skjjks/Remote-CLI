@@ -90,15 +90,13 @@ async function ensureAISession(
   }
 
   // If active session is a different type, look for an existing session of the right type
-  if (session && session.type !== backend) {
+  if (!session || session.type !== backend) {
     const existing = sessionManager.getSessions().find(
       s => s.type === backend && s.conversationId === conversationId,
     );
     if (existing) {
       session = existing;
       activeSessions.set(conversationId, session.id);
-    } else {
-      session = undefined; // force creation below
     }
   }
 
