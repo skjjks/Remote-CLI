@@ -159,9 +159,19 @@ async function ensureAISession(
     return { manager, session, ready: false };
   }
 
+  // Check if the driver's current SDK session matches what this session record expects
+  const currentDriverSdkId = manager.getSessionId(conversationId);
+  const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
+
+  if (session.sdkSessionId && currentDriverSdkId !== session.sdkSessionId) {
+    // Driver has a different session (e.g., user did !switch) — reconnect to the right one
+    console.log(`${logPrefix} Switching driver from ${currentDriverSdkId} to ${session.sdkSessionId}`);
+    await manager.reconnectSession(conversationId, session.sdkSessionId);
+    return { manager, session, ready: true };
+  }
+
   // Check if session is still alive
   const alive = await manager.isSessionAlive(conversationId);
-  const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
   console.log(`${logPrefix} session alive=${alive}, sdkSessionId=${session.sdkSessionId || 'none'}`);
 
   if (!alive) {
