@@ -20,7 +20,8 @@ export async function handleNewSession(conversationId: string): Promise<void> {
 export async function handleListSessions(conversationId: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
-  const sessions = sessionManager.getSessions();
+  // Only show sessions belonging to this conversation
+  const sessions = sessionManager.getSessions().filter(s => s.conversationId === conversationId);
 
   if (sessions.length === 0) {
     await feishuBot.sendText(conversationId, 'No active sessions');
@@ -60,6 +61,12 @@ export async function handleSwitchSession(conversationId: string, idStr?: string
     return;
   }
 
+  // Only allow switching to own sessions
+  if (session.conversationId && session.conversationId !== conversationId) {
+    await feishuBot.sendText(conversationId, `Session ${sessionId} belongs to another conversation`);
+    return;
+  }
+
   // For terminal sessions, verify tmux session still exists
   if (session.type === 'terminal' && session.tmuxName) {
     const exists = await tmux.sessionExists(session.tmuxName);
@@ -83,9 +90,9 @@ export async function handleKillSession(conversationId: string, args: string[]):
 
   const sessionManager = getSessionManager();
 
-  // Handle "!kill all"
+  // Handle "!kill all" — only kills own sessions
   if (args[0] === 'all') {
-    const sessions = sessionManager.getSessions();
+    const sessions = sessionManager.getSessions().filter(s => s.conversationId === conversationId);
     const count = sessions.length;
     for (const s of sessions) {
       await killSingleSession(conversationId, s.id, sessionManager);
@@ -105,6 +112,10 @@ export async function handleKillSession(conversationId: string, args: string[]):
     const session = sessionManager.getSession(sessionId);
     if (!session) {
       killed.push(`${sessionId}: not found`);
+      continue;
+    }
+    if (session.conversationId && session.conversationId !== conversationId) {
+      killed.push(`${sessionId}: not your session`);
       continue;
     }
     await killSingleSession(conversationId, sessionId, sessionManager);
