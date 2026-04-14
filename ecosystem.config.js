@@ -11,7 +11,8 @@ module.exports = {
     max_memory_restart: '500M',
     env: {
       NODE_ENV: 'production',
-      // Inherit Anthropic config from system environment
+      // Fork mode inherits env, but PM2 daemon may not pick up shell vars
+      // on restart. Explicitly pass Anthropic config to be safe.
       ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY,
       ANTHROPIC_BASE_URL: process.env.ANTHROPIC_BASE_URL,
       ANTHROPIC_DEFAULT_OPUS_MODEL: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL,
