@@ -55,12 +55,12 @@
 
 ### 会话管理
 
-- `!list` — 查看所有活跃会话
-- `!switch <id>` — 切换会话
-- `!kill <id> [id2...]` / `!kill all` — 批量终止会话
-- `!history` — 查看命令历史
-- 24 小时不活跃自动清理
-- 会话持久化，Bot 重启后自动重连
+- `!new` / `!new claude` / `!new oc` — 创建终端 / Claude / opencode 会话
+- 多会话共存 — Claude、opencode、终端、工程云会话可同时运行
+- `!switch <id>` — 在会话间自由切换，AI 对话上下文完整保留
+- `!cd <path>` — 切换 AI 工作目录，不销毁当前对话
+- 会话归属隔离 — 每个飞书会话只能看到和操作自己的 session
+- 24 小时不活跃自动清理，Bot 重启后自动重连
 
 ### 智能卡片
 
@@ -185,15 +185,18 @@ npm run deploy
 
 | 命令 | 说明 |
 |------|------|
-| `!new` | 创建新 Claude 会话 |
-| `!list` | 列出所有会话 |
+| `!new` | 创建新终端会话 |
+| `!new claude` | 创建新 Claude 会话 |
+| `!new opencode` / `!new oc` | 创建新 opencode 会话 |
+| `!list` | 列出当前会话 |
 | `!switch <id>` | 切换会话 |
 | `!kill <id> [id2...]` | 终止一个或多个会话 |
 | `!kill all` | 终止所有会话 |
 | `!interrupt` | 中断当前操作（Ctrl+C） |
 | `!history` | 查看命令历史 |
-| `!cd <path>` | 切换 AI 工作目录 |
+| `!cd <path>` | 切换 AI 工作目录（保持对话上下文） |
 | `!mode auto\|default` | 切换权限模式 |
+| `!whoami` | 显示你的飞书用户 ID |
 
 ## 架构设计
 
