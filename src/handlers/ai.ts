@@ -216,23 +216,25 @@ export async function handleCd(conversationId: string, dir: string): Promise<voi
 
   const manager = backend === 'opencode' ? getOpencodeManager() : getClaudeManager();
 
-  // Kill current AI session if exists
+  // If there's an active AI session, send cd command within it (preserves context)
   if (activeSessionId !== undefined) {
     const session = sessionManager.getSession(activeSessionId);
-    if (session?.type === 'claude' || session?.type === 'opencode') {
-      await manager.killSession(conversationId);
-      await sessionManager.killSession(activeSessionId);
+    if ((session?.type === 'claude' || session?.type === 'opencode') && await manager.isSessionAlive(conversationId)) {
+      manager.sendMessage(conversationId, `Please change your working directory to ${dir} using the Bash tool: cd ${dir} && pwd`).catch(err => {
+        console.error('Failed to send cd message:', err);
+      });
+      return;
     }
   }
 
-  // Create new session in the specified directory
+  // No active session — create new session in the specified directory
   const session = backend === 'opencode'
     ? sessionManager.createOpencodeSession(conversationId)
     : sessionManager.createClaudeSession(conversationId);
   activeSessions.set(conversationId, session.id);
 
   const label = backend === 'opencode' ? 'opencode' : 'Claude';
-  feishuBot.sendText(conversationId, `Switching to ${dir} ...`).catch(err => console.warn('[FEISHU] Failed to send cd notification:', err.message || err));
+  feishuBot.sendText(conversationId, `Starting ${label} in ${dir} ...`).catch(err => console.warn('[FEISHU] Failed to send cd notification:', err.message || err));
   manager.startSession(conversationId, `${backend}-${session.id}`, dir).then(() => {
     const sdkSessionId = manager.getSessionId(conversationId);
     if (sdkSessionId) {
