@@ -3,6 +3,10 @@ import path from 'path';
 import { getConfig } from '../config';
 import * as tmux from './tmux';
 
+function beijingNow(): string {
+  return new Date().toLocaleString('sv-SE', { timeZone: 'Asia/Shanghai' }).replace(' ', 'T');
+}
+
 /**
  * Session information stored on disk
  */
@@ -112,7 +116,7 @@ export class SessionManager {
       id,
       type: 'terminal',
       tmuxName,
-      created: new Date().toISOString(),
+      created: beijingNow(),
       conversationId,
     };
 
@@ -172,7 +176,7 @@ export class SessionManager {
     const session: SessionInfo = {
       id,
       type: 'claude',
-      created: new Date().toISOString(),
+      created: beijingNow(),
       conversationId,
     };
 
@@ -191,7 +195,7 @@ export class SessionManager {
     const session: SessionInfo = {
       id,
       type: 'opencode',
-      created: new Date().toISOString(),
+      created: beijingNow(),
       conversationId,
     };
     this.data.sessions.push(session);
@@ -221,7 +225,7 @@ export class SessionManager {
       id,
       type: 'clouddev',
       tmuxName,
-      created: new Date().toISOString(),
+      created: beijingNow(),
       conversationId,
       clouddevStatus: 'connecting',
     };
@@ -295,7 +299,7 @@ export class SessionManager {
   updateLastActivity(sessionId: number): void {
     const session = this.getSession(sessionId);
     if (session) {
-      session.lastActivity = new Date().toISOString();
+      session.lastActivity = beijingNow();
       this.saveSessions();
     }
   }
