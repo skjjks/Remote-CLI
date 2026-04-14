@@ -447,19 +447,3 @@ export class SmartCardBuilder {
   }
 }
 
-export function isMoreOptionsValue(value: string): boolean {
-  return value === MORE_OPTIONS_VALUE;
-}
-
-export function isPermitAction(value: string): boolean {
-  return [PERMIT_ALLOW, PERMIT_DENY, PERMIT_ALWAYS].includes(value);
-}
-
-export function isMenuAction(value: string): boolean {
-  return /^__menu_\d+__$/.test(value);
-}
-
-export function getMenuIndex(value: string): number {
-  const match = value.match(/^__menu_(\d+)__$/);
-  return match ? parseInt(match[1], 10) : -1;
-}

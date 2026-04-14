@@ -93,9 +93,6 @@ export interface ClaudeResultEvent extends ClaudeBaseEvent {
   }>;
 }
 
-/** Union of all event types we process */
-export type ClaudeEvent = ClaudeInitEvent | ClaudeHookEvent | ClaudeAssistantEvent | ClaudeResultEvent;
-
 /** Narrowing helpers */
 export function isInitEvent(event: ClaudeBaseEvent): event is ClaudeInitEvent {
   return event.type === 'system' && 'subtype' in event && event.subtype === 'init';

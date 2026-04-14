@@ -448,7 +448,3 @@ export function getSessionManager(): SessionManager {
   }
   return _sessionManager;
 }
-
-export function resetSessionManager(): void {
-  _sessionManager = null;
-}

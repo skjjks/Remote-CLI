@@ -121,10 +121,3 @@ export async function forwardToClouddev(conversationId: string, tmuxName: string
   await tmux.sendLiteralKeys(tmuxName, message);
   await tmux.sendKeys(tmuxName, 'Enter');
 }
-
-/**
- * Get the active connector for a conversation (if connecting).
- */
-export function getActiveConnector(conversationId: string): CloudDevConnector | undefined {
-  return activeConnectors.get(conversationId);
-}
