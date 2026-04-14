@@ -13,7 +13,7 @@ export interface SessionInfo {
   created: string;
   conversationId?: string;
   // Claude-specific
-  claudeSessionId?: string;
+  sdkSessionId?: string;
   permissionMode?: 'default' | 'auto';
   allowedTools?: string[];
   // Terminal interactive mode
@@ -236,10 +236,10 @@ export class SessionManager {
   /**
    * Update the Claude session ID (from system/init event)
    */
-  updateClaudeSessionId(sessionId: number, claudeSessionId: string): void {
+  updateSdkSessionId(sessionId: number, sdkSessionId: string): void {
     const session = this.getSession(sessionId);
     if (session) {
-      session.claudeSessionId = claudeSessionId;
+      session.sdkSessionId = sdkSessionId;
       this.saveSessions();
     }
   }

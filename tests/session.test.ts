@@ -57,11 +57,11 @@ describe('SessionManager with session types', () => {
     expect(session.tmuxName).toBeUndefined();
   });
 
-  it('updateClaudeSessionId stores the Claude session ID', () => {
+  it('updateSdkSessionId stores the Claude session ID', () => {
     const session = manager.createClaudeSession('conv1');
-    manager.updateClaudeSessionId(session.id, 'claude-abc-123');
+    manager.updateSdkSessionId(session.id, 'claude-abc-123');
     const updated = manager.getSession(session.id);
-    expect(updated?.claudeSessionId).toBe('claude-abc-123');
+    expect(updated?.sdkSessionId).toBe('claude-abc-123');
   });
 
   it('should create opencode session with correct type', () => {

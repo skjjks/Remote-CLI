@@ -173,12 +173,12 @@ async function reconnectBackend(
   sessionManager: ReturnType<typeof getSessionManager>,
 ): Promise<void> {
   for (const session of sessions) {
-    if (session.type !== type || !session.claudeSessionId || !session.conversationId) continue;
-    const ok = await manager.reconnectSession(session.conversationId, session.claudeSessionId);
+    if (session.type !== type || !session.sdkSessionId || !session.conversationId) continue;
+    const ok = await manager.reconnectSession(session.conversationId, session.sdkSessionId);
     if (ok) {
       activeSessions.set(session.conversationId, session.id);
     } else {
-      console.log(`[INIT] ${type} session ${session.id} (${session.claudeSessionId}) no longer exists, removing`);
+      console.log(`[INIT] ${type} session ${session.id} (${session.sdkSessionId}) no longer exists, removing`);
       await sessionManager.killSession(session.id).catch(err =>
         console.warn('[INIT] Failed to kill stale session:', err.message || err),
       );

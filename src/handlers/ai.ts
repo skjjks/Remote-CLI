@@ -25,6 +25,18 @@ const aiCallbacks: AIManagerCallbacks = {
     const feishuBot = getFeishuBot();
     const card = smartCard.buildTextCard(content, metadata);
     feishuBot.updateCard(messageId, card).catch(err => console.warn('[CARD] Failed to update card on stream end:', err.message || err));
+
+    // Persist SDK session ID if available (Claude init event sets it during stream)
+    if (metadata?.sessionId) {
+      const activeSessionId = activeSessions.get(conversationId);
+      if (activeSessionId !== undefined) {
+        const sessionManager = getSessionManager();
+        const session = sessionManager.getSession(activeSessionId);
+        if (session && !session.sdkSessionId) {
+          sessionManager.updateSdkSessionId(activeSessionId, metadata.sessionId);
+        }
+      }
+    }
   },
 
   onMenu: async (conversationId, menu) => {
@@ -111,7 +123,7 @@ async function ensureAISession(
     manager.startSession(conversationId, `${backend}-${session.id}`).then(() => {
       const sdkSessionId = manager.getSessionId(conversationId);
       if (sdkSessionId) {
-        sessionManager.updateClaudeSessionId(session!.id, sdkSessionId);
+        sessionManager.updateSdkSessionId(session!.id, sdkSessionId);
       }
       manager.sendMessage(conversationId, firstPrompt).catch(err => {
         console.error(`Failed to send message to ${label}:`, err);
@@ -129,13 +141,13 @@ async function ensureAISession(
   // Check if session is still alive
   const alive = await manager.isSessionAlive(conversationId);
   const logPrefix = backend === 'opencode' ? '[OPENCODE]' : '[CLAUDE]';
-  console.log(`${logPrefix} session alive=${alive}, sdkSessionId=${session.claudeSessionId || 'none'}`);
+  console.log(`${logPrefix} session alive=${alive}, sdkSessionId=${session.sdkSessionId || 'none'}`);
 
   if (!alive) {
-    if (session.claudeSessionId) {
-      console.log(`${logPrefix} Resuming session ${session.claudeSessionId}`);
+    if (session.sdkSessionId) {
+      console.log(`${logPrefix} Resuming session ${session.sdkSessionId}`);
       feishuBot.sendText(conversationId, `Resuming ${label} session...`).catch(err => console.warn('[FEISHU] Failed to send resume notification:', err.message || err));
-      await manager.reconnectSession(conversationId, session.claudeSessionId);
+      await manager.reconnectSession(conversationId, session.sdkSessionId);
       return { manager, session, ready: true };
     }
 
@@ -144,7 +156,7 @@ async function ensureAISession(
     manager.startSession(conversationId, `${backend}-${session.id}`).then(() => {
       const sdkSessionId = manager.getSessionId(conversationId);
       if (sdkSessionId) {
-        sessionManager.updateClaudeSessionId(session!.id, sdkSessionId);
+        sessionManager.updateSdkSessionId(session!.id, sdkSessionId);
       }
       manager.sendMessage(conversationId, firstPrompt).catch(err => {
         console.error(`Failed to send message to ${label}:`, err);
@@ -250,7 +262,7 @@ export async function handleCd(conversationId: string, dir: string): Promise<voi
   manager.startSession(conversationId, `${backend}-${session.id}`, dir).then(() => {
     const sdkSessionId = manager.getSessionId(conversationId);
     if (sdkSessionId) {
-      sessionManager.updateClaudeSessionId(session.id, sdkSessionId);
+      sessionManager.updateSdkSessionId(session.id, sdkSessionId);
     }
   }).catch(err => {
     console.error(`Failed to start ${label} in dir:`, err);

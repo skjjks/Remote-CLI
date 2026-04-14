@@ -30,8 +30,8 @@ export async function handleListSessions(conversationId: string): Promise<void> 
   const activeSessionId = activeSessions.get(conversationId);
   const lines = sessions.map(s => {
     const active = s.id === activeSessionId ? ' *' : '';
-    const sid = (s.type === 'claude' || s.type === 'opencode') && s.claudeSessionId
-      ? ` (${s.claudeSessionId})`
+    const sid = (s.type === 'claude' || s.type === 'opencode') && s.sdkSessionId
+      ? ` (${s.sdkSessionId})`
       : '';
     return `  ${s.id}: [${s.type}]${sid} created ${s.created}${active}`;
   });
