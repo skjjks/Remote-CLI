@@ -174,3 +174,12 @@ export async function capturePane(name: string): Promise<string> {
   const args = ['capture-pane', '-t', name, '-p', '-S', '-', '-E', '-'];
   return executeTmux(args);
 }
+
+/**
+ * Capture only the visible viewport of a tmux pane (no scrollback).
+ * More efficient than capturePane() for polling use cases.
+ */
+export async function capturePaneVisible(name: string): Promise<string> {
+  const args = ['capture-pane', '-t', name, '-p'];
+  return executeTmux(args);
+}

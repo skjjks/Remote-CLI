@@ -3,16 +3,23 @@ import { getConfig } from '../config';
 import { getSessionManager, SessionInfo } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
 import { isInteractiveProgram } from '../terminal/interactive';
-import { activeSessions, pendingPrompts, smartCard, addToHistory } from '../state';
+import { activeSessions, smartCard, addToHistory } from '../state';
 
 // ── Helpers ──
+
+function sleep(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
 
 /**
  * Extract command output from tmux capture-pane result.
  * Finds the last occurrence of the command, takes everything after it
  * until the next shell prompt, and strips empty/padding lines.
+ *
+ * Also returns `completed: true` when a shell prompt appears after the output,
+ * indicating the command has finished executing.
  */
-export function extractCommandOutput(captured: string, command: string): { output: string; cwd: string } {
+export function extractCommandOutput(captured: string, command: string): { output: string; cwd: string; completed: boolean } {
   const lines = captured.split('\n');
 
   // Trim trailing empty lines (tmux pads to full screen height)
@@ -43,6 +50,11 @@ export function extractCommandOutput(captured: string, command: string): { outpu
     }
   }
 
+  // Check if command is completed: last non-empty line matches a shell prompt.
+  // Don't require finding the command line — it may have scrolled off the visible viewport.
+  const lastLine = trimmedLines.length > 0 ? trimmedLines[trimmedLines.length - 1] : '';
+  const completed = promptPattern.test(lastLine) && trimmedLines.length > 1;
+
   // Extract output: lines after the command until the next prompt
   if (cmdLineIdx >= 0) {
     const outputLines: string[] = [];
@@ -59,14 +71,114 @@ export function extractCommandOutput(captured: string, command: string): { outpu
     while (oEnd > start && outputLines[oEnd].trim() === '') oEnd--;
 
     const output = outputLines.slice(start, oEnd + 1).join('\n');
-    return { output: output || '(no output)', cwd };
+    return { output: output || '(no output)', cwd, completed };
   }
 
-  // Fallback: couldn't find command, return all non-empty non-prompt lines
+  // Fallback: command scrolled off screen — return all non-prompt lines as output
   const fallback = trimmedLines
     .filter(l => l.trim() && !promptPattern.test(l))
     .join('\n');
-  return { output: fallback || '(no output)', cwd };
+  return { output: fallback || '(no output)', cwd, completed };
+}
+
+// ── Polling-based command execution ──
+
+const MAX_POLL_MS = 30_000;
+const POLL_INTERVAL_MS = 1000;
+const INITIAL_DELAY_MS = 500;
+
+/**
+ * Execute a shell command with polling-based completion detection.
+ * Sends a "running..." card immediately, updates it with live output,
+ * and finalizes when the command completes, a pager is detected, or it times out.
+ */
+async function pollCommandOutput(
+  conversationId: string,
+  tmuxName: string,
+  command: string,
+  sessionId: number,
+  startTime: number,
+): Promise<void> {
+  const feishuBot = getFeishuBot();
+  let messageId: string | undefined;
+  let lastOutput = '';
+
+  // Initial delay before first capture
+  await sleep(INITIAL_DELAY_MS);
+
+  for (let elapsed = INITIAL_DELAY_MS; elapsed < MAX_POLL_MS; elapsed += POLL_INTERVAL_MS) {
+    // Check if a pager/interactive program took over (git log → less, man → less, etc.)
+    try {
+      const fgCmd = await tmux.getCurrentCommand(tmuxName);
+      if (isInteractiveProgram(fgCmd)) {
+        // Pager detected — show current content and stop polling
+        const captured = await tmux.capturePaneVisible(tmuxName);
+        const durationMs = Date.now() - startTime;
+        const card = smartCard.buildTerminalOutputCard(captured, {
+          command, sessionId, durationMs,
+        });
+        if (messageId) {
+          await feishuBot.updateCard(messageId, card);
+        } else {
+          await feishuBot.sendCard(conversationId, card);
+        }
+        return;
+      }
+    } catch {
+      // Ignore detection failure, continue polling
+    }
+
+    // Use visible-only capture during polling (no scrollback = faster)
+    const captured = await tmux.capturePaneVisible(tmuxName);
+    const { output, cwd, completed } = extractCommandOutput(captured, command);
+
+    if (completed) {
+      const durationMs = Date.now() - startTime;
+      const card = smartCard.buildTerminalOutputCard(output, {
+        command, sessionId, cwd, durationMs,
+      });
+
+      if (messageId) {
+        await feishuBot.updateCard(messageId, card);
+      } else {
+        await feishuBot.sendCard(conversationId, card);
+      }
+      return;
+    }
+
+    // Still running — send or update "running..." card
+    if (output !== lastOutput || !messageId) {
+      const durationMs = Date.now() - startTime;
+      const displayOutput = output === '(no output)' ? '' : output;
+      const card = smartCard.buildTerminalOutputCard(displayOutput || 'waiting for output...', {
+        command, sessionId, cwd, durationMs, running: true,
+      });
+
+      if (messageId) {
+        feishuBot.updateCard(messageId, card).catch(err =>
+          console.warn('[TERMINAL] Failed to update running card:', err.message || err));
+      } else {
+        messageId = await feishuBot.sendCard(conversationId, card);
+      }
+      lastOutput = output;
+    }
+
+    await sleep(POLL_INTERVAL_MS);
+  }
+
+  // Timeout — capture whatever we have
+  const captured = await tmux.capturePaneVisible(tmuxName);
+  const { output, cwd } = extractCommandOutput(captured, command);
+  const durationMs = Date.now() - startTime;
+  const card = smartCard.buildTerminalOutputCard(output, {
+    command: `${command} (timeout)`, sessionId, cwd, durationMs,
+  });
+
+  if (messageId) {
+    await feishuBot.updateCard(messageId, card);
+  } else {
+    await feishuBot.sendCard(conversationId, card);
+  }
 }
 
 // ── Terminal command handlers ──
@@ -95,31 +207,14 @@ export async function handleShellCommand(conversationId: string, command: string
 
   sessionManager.updateLastActivity(session.id);
 
-  // Send command via tmux send-keys (not PTY stream)
-  // Use literal mode for user-provided text to prevent tmux key name interpretation
+  // Send command via tmux
   const startTime = Date.now();
   await tmux.sendLiteralKeys(session.tmuxName!, command);
   await tmux.sendKeys(session.tmuxName!, 'Enter');
 
-  // Wait for command to execute, then capture rendered screen
-  const sessionId = session.id;
-  const tmuxName = session.tmuxName!;
-  setTimeout(async () => {
-    try {
-      const captured = await tmux.capturePane(tmuxName);
-      const { output, cwd } = extractCommandOutput(captured, command);
-      const durationMs = Date.now() - startTime;
-      const card = smartCard.buildTerminalOutputCard(output, {
-        command,
-        sessionId,
-        cwd,
-        durationMs,
-      });
-      await feishuBot.sendCard(conversationId, card);
-    } catch (err) {
-      console.error('Failed to capture pane:', err);
-    }
-  }, getConfig().timing.shellCaptureDelay);
+  // Poll for completion with real-time card updates
+  pollCommandOutput(conversationId, session.tmuxName!, command, session.id, startTime)
+    .catch(err => console.error('[TERMINAL] Poll error:', err));
 }
 
 export async function handleSpecialKey(conversationId: string, key?: string): Promise<void> {
@@ -240,6 +335,7 @@ export async function handleRawMode(conversationId: string, arg?: string): Promi
 /**
  * Route a user message to an active terminal session.
  * Handles raw mode detection, literal key sending, and screen capture.
+ * Non-raw mode uses polling for completion detection and real-time updates.
  */
 export async function handleTerminalInput(
   conversationId: string,
@@ -268,21 +364,22 @@ export async function handleTerminalInput(
     await tmux.sendKeys(tmuxName, 'Enter');
   }
 
-  const delay = useRawMode ? cfg.timing.rawModeCaptureDelay : cfg.timing.shellCaptureDelay;
-  setTimeout(async () => {
-    try {
-      const captured = await tmux.capturePane(tmuxName);
-      const durationMs = Date.now() - startTime;
-      if (useRawMode) {
+  if (useRawMode) {
+    // Raw mode: single capture after delay (for vim, htop, etc.)
+    const delay = cfg.timing.rawModeCaptureDelay;
+    setTimeout(async () => {
+      try {
+        const captured = await tmux.capturePane(tmuxName);
+        const durationMs = Date.now() - startTime;
         const card = smartCard.buildTerminalOutputCard(captured, { sessionId, durationMs });
         await feishuBot.sendCard(conversationId, card);
-      } else {
-        const { output, cwd } = extractCommandOutput(captured, message);
-        const card = smartCard.buildTerminalOutputCard(output, { command: message, sessionId, cwd, durationMs });
-        await feishuBot.sendCard(conversationId, card);
+      } catch (err) {
+        console.error('Failed to capture pane:', err);
       }
-    } catch (err) {
-      console.error('Failed to capture pane:', err);
-    }
-  }, delay);
+    }, delay);
+  } else {
+    // Normal mode: polling with real-time updates
+    pollCommandOutput(conversationId, tmuxName, message, sessionId, startTime)
+      .catch(err => console.error('[TERMINAL] Poll error:', err));
+  }
 }

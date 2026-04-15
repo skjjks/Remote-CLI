@@ -133,12 +133,16 @@ describe('SmartCardBuilder', () => {
   });
 
   describe('buildTerminalOutputCard', () => {
-    it('wraps multi-line output in a code block card with language', () => {
+    it('renders multi-line plain output as escaped markdown text (not code block)', () => {
       const card = builder.buildTerminalOutputCard('$ ls\nfile.txt\ndir1\ndir2');
       expect(card.header.title.content).toContain('Terminal');
       const mdElements = card.elements.filter((e: any) => e.tag === 'markdown');
-      const hasCode = mdElements.some((e: any) => e.content.includes('```bash'));
-      expect(hasCode).toBe(true);
+      // Plain output should NOT be in code blocks
+      const hasCode = mdElements.some((e: any) => e.content.includes('```'));
+      expect(hasCode).toBe(false);
+      // Should contain the output text (escaped)
+      const hasContent = mdElements.some((e: any) => e.content.includes('file.txt'));
+      expect(hasContent).toBe(true);
     });
 
     it('uses command as title when provided', () => {
@@ -215,11 +219,12 @@ describe('SmartCardBuilder', () => {
       expect(md.content).toMatch(/^```yaml\n/);
     });
 
-    it('defaults to bash for plain terminal output', () => {
-      const plainOutput = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 file1\n-rw-r--r-- 1 user staff 256 Apr 10 file2\nmore lines\nto force code block';
+    it('defaults to plain text (no code block) for plain terminal output', () => {
+      const plainOutput = 'total 32\ndrwxr-xr-x 4 user staff 128 Apr 10 file1\n-rw-r--r-- 1 user staff 256 Apr 10 file2\nmore lines\nto force multi-line';
       const card = builder.buildTerminalOutputCard(plainOutput);
       const md = card.elements.find((e: any) => e.tag === 'markdown');
-      expect(md.content).toMatch(/^```bash\n/);
+      expect(md.content).not.toContain('```');
+      expect(md.content).toContain('total 32');
     });
   });
 
@@ -277,11 +282,12 @@ describe('SmartCardBuilder', () => {
       expect(md.content).not.toContain('```');
     });
 
-    it('renders 4+ line output with code block', () => {
+    it('renders 4+ line plain output as escaped markdown (no code block)', () => {
       const output = 'line1\nline2\nline3\nline4';
       const card = builder.buildTerminalOutputCard(output);
       const md = card.elements.find((e: any) => e.tag === 'markdown');
-      expect(md.content).toContain('```');
+      expect(md.content).not.toContain('```');
+      expect(md.content).toContain('line1');
     });
 
     it('renders JSON short output with code block despite being short', () => {
@@ -295,6 +301,55 @@ describe('SmartCardBuilder', () => {
       const card = builder.buildTerminalOutputCard('(no output)');
       const md = card.elements.find((e: any) => e.tag === 'markdown');
       expect(md.content).not.toContain('```');
+    });
+  });
+
+  describe('running status', () => {
+    it('shows running indicator in title', () => {
+      const card = builder.buildTerminalOutputCard('partial output', {
+        command: 'npm install', running: true,
+      });
+      expect(card.header.title.content).toContain('running...');
+    });
+  });
+
+  describe('terminal table detection', () => {
+    it('converts columnar output to Feishu table', () => {
+      const psOutput = 'PID   TTY      TIME     CMD\n  1   pts/0   00:00:00 bash\n  2   pts/0   00:00:01 node';
+      const table = builder.parseTerminalTable(psOutput);
+      expect(table).not.toBeNull();
+      expect((table as any).tag).toBe('table');
+      expect((table as any).columns.length).toBeGreaterThanOrEqual(2);
+      expect((table as any).rows.length).toBe(2);
+    });
+
+    it('returns null for non-tabular text', () => {
+      const text = 'hello world\nthis is just text\nnot a table';
+      const table = builder.parseTerminalTable(text);
+      expect(table).toBeNull();
+    });
+  });
+
+  describe('enhanced syntax detection', () => {
+    it('detects XML output', () => {
+      const xmlOutput = '<?xml version="1.0"?>\n<root>\n  <item>test</item>\n</root>';
+      const card = builder.buildTerminalOutputCard(xmlOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```xml\n/);
+    });
+
+    it('detects SQL output', () => {
+      const sqlOutput = 'SELECT id, name\nFROM users\nWHERE active = true\nORDER BY name;';
+      const card = builder.buildTerminalOutputCard(sqlOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```sql\n/);
+    });
+
+    it('detects Python traceback', () => {
+      const tbOutput = 'Traceback (most recent call last):\n  File "test.py", line 1\nNameError: name is not defined';
+      const card = builder.buildTerminalOutputCard(tbOutput);
+      const md = card.elements.find((e: any) => e.tag === 'markdown');
+      expect(md.content).toMatch(/^```python\n/);
     });
   });
 

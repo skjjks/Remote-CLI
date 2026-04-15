@@ -113,9 +113,33 @@ export class SmartCardBuilder {
   }
 
   private stripAnsi(text: string): string {
-    return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    // CSI sequences (colors, cursor movement, etc.)
+    let result = text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, '');
+    // OSC sequences (terminal title, hyperlinks): ESC ] ... ST or ESC ] ... BEL
+    result = result.replace(/\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)/g, '');
+    // Other escape sequences: ESC followed by single char
+    result = result.replace(/\x1b[^[\]]/g, '');
+    return result;
   }
 
+  /**
+   * Escape markdown-sensitive characters in terminal output so Feishu
+   * renders it as plain text instead of interpreting formatting.
+   */
+  private escapeMarkdown(text: string): string {
+    return text
+      // Escape paired *word* and **word** patterns (bold/italic)
+      .replace(/\*([^\s*]([^*]*[^\s*])?)\*/g, '\\*$1\\*')
+      // Escape backtick pairs that Feishu would render as inline code
+      .replace(/`([^`]+)`/g, '\\`$1\\`')
+      // Escape [text](url) link patterns
+      .replace(/\[([^\]]+)\]\(/g, '\\[$1\\](');
+  }
+
+  /**
+   * Detect the likely language/format of terminal output for syntax highlighting.
+   * Returns a language identifier for code blocks, or 'plain' for plain text display.
+   */
   private detectOutputLanguage(output: string): string {
     const trimmed = output.trimStart();
 
@@ -137,6 +161,39 @@ export class SmartCardBuilder {
       return 'diff';
     }
 
+    // Git log: commit hash + Author + Date pattern
+    if (/^commit [a-f0-9]{7,40}/.test(trimmed)) {
+      let gitLogMarkers = 0;
+      for (const line of lines.slice(0, 10)) {
+        if (/^(commit [a-f0-9]|Author:|Date:|Merge:)/.test(line)) {
+          gitLogMarkers++;
+        }
+      }
+      if (gitLogMarkers >= 2) return 'bash';
+    }
+
+    // Python traceback
+    if (trimmed.startsWith('Traceback (most recent call last)')) {
+      return 'python';
+    }
+
+    // XML/HTML: multiple lines with tags
+    let tagCount = 0;
+    for (const line of lines.slice(0, 15)) {
+      if (/^\s*<[a-zA-Z/!?]/.test(line)) {
+        tagCount++;
+      }
+    }
+    if (tagCount >= 3) {
+      return 'xml';
+    }
+
+    // SQL: starts with common SQL keywords
+    const sqlPattern = /^\s*(SELECT|INSERT|UPDATE|DELETE|CREATE|ALTER|DROP|EXPLAIN|WITH)\b/i;
+    if (sqlPattern.test(trimmed)) {
+      return 'sql';
+    }
+
     // YAML: starts with --- or multiple key: value lines
     if (trimmed.startsWith('---')) {
       return 'yaml';
@@ -151,7 +208,8 @@ export class SmartCardBuilder {
       return 'yaml';
     }
 
-    return 'bash';
+    // Default: plain text (no code block)
+    return 'plain';
   }
 
   private hasErrorIndicators(output: string): boolean {
@@ -241,6 +299,95 @@ export class SmartCardBuilder {
 
     flushText();
     return elements;
+  }
+
+  /**
+   * Detect space-aligned columnar terminal output (ps, docker, ls -l, df, etc.)
+   * and convert to a Feishu native table element.
+   * Returns null if the output is not tabular.
+   */
+  parseTerminalTable(text: string): FeishuCardElement | null {
+    const lines = text.split('\n').filter(l => l.trim());
+    if (lines.length < 3) return null;
+
+    // Header line: first non-empty line
+    const headerLine = lines[0];
+
+    // Detect column boundaries by finding runs of 2+ spaces in the header
+    const colStarts: number[] = [0];
+    let inSpace = false;
+    for (let i = 0; i < headerLine.length; i++) {
+      if (headerLine[i] === ' ') {
+        if (!inSpace) inSpace = true;
+      } else {
+        if (inSpace && i > 0) {
+          // Check if previous gap was 2+ spaces
+          let gapStart = i - 1;
+          while (gapStart > 0 && headerLine[gapStart - 1] === ' ') gapStart--;
+          if (i - gapStart >= 2) {
+            colStarts.push(i);
+          }
+        }
+        inSpace = false;
+      }
+    }
+
+    // Need at least 2 columns
+    if (colStarts.length < 2) return null;
+
+    // Extract headers
+    const headers: string[] = [];
+    for (let c = 0; c < colStarts.length; c++) {
+      const start = colStarts[c];
+      const end = c + 1 < colStarts.length ? colStarts[c + 1] : headerLine.length;
+      headers.push(headerLine.slice(start, end).trim());
+    }
+
+    // Validate: check that data rows roughly align with headers
+    // At least 60% of data rows must have content matching column positions
+    let alignedRows = 0;
+    for (let i = 1; i < lines.length; i++) {
+      let colsFound = 0;
+      for (let c = 0; c < colStarts.length; c++) {
+        const start = colStarts[c];
+        if (start < lines[i].length && lines[i][start] !== ' ') {
+          colsFound++;
+        }
+      }
+      if (colsFound >= Math.ceil(colStarts.length * 0.4)) {
+        alignedRows++;
+      }
+    }
+
+    if (alignedRows < (lines.length - 1) * 0.5) return null;
+
+    // Parse data rows using column positions
+    const rows: Record<string, string>[] = [];
+    for (let i = 1; i < lines.length; i++) {
+      const row: Record<string, string> = {};
+      for (let c = 0; c < colStarts.length; c++) {
+        const start = colStarts[c];
+        const end = c + 1 < colStarts.length ? colStarts[c + 1] : lines[i].length;
+        row[`col_${c}`] = (start < lines[i].length ? lines[i].slice(start, end).trim() : '');
+      }
+      rows.push(row);
+    }
+
+    const columns = headers.map((h, idx) => ({
+      name: `col_${idx}`,
+      display_name: h,
+      data_type: 'text' as const,
+      width: 'auto' as const,
+    }));
+
+    return {
+      tag: 'table',
+      page_size: Math.max(rows.length, 1),
+      row_height: 'low',
+      header_style: { text_align: 'left', text_size: 'normal', background_style: 'grey', bold: true },
+      columns,
+      rows,
+    } as any;
   }
 
   buildTextCard(text: string, footer?: { backend?: string; sessionId?: string; model?: string; cwd?: string; context?: string; status?: string; costUsd?: number; inputTokens?: number; outputTokens?: number }): FeishuCardV2 {
@@ -345,33 +492,49 @@ export class SmartCardBuilder {
     ]);
   }
 
-  buildTerminalOutputCard(output: string, opts?: { command?: string; sessionId?: number; cwd?: string; durationMs?: number }): FeishuCardV2 {
+  buildTerminalOutputCard(output: string, opts?: { command?: string; sessionId?: number; cwd?: string; durationMs?: number; running?: boolean }): FeishuCardV2 {
     const cleaned = this.stripAnsi(output);
-    const title = opts?.command ? `$ ${opts.command}` : 'Terminal';
     const color = this.hasErrorIndicators(cleaned) ? 'red' : 'blue';
+
+    // Title: show command with running/done status
+    let title = opts?.command ? `$ ${opts.command}` : 'Terminal';
+    if (opts?.running) {
+      title += ' (running...)';
+    }
 
     const lines = cleaned.split('\n');
     const lang = this.detectOutputLanguage(cleaned);
-    const isSpecialFormat = lang !== 'bash';
-    const isShort = lines.length <= 3 && !isSpecialFormat;
+    const useCodeBlock = lang !== 'plain'; // JSON, diff, YAML, XML, SQL, Python keep code blocks
+    const isShort = lines.length <= 3 && !useCodeBlock;
 
     let elements: FeishuCardElement[];
+
     if (isShort) {
-      elements = [{ tag: 'markdown' as const, content: `**${cleaned}**` }];
-    } else {
+      // Short output: bold text
+      elements = [{ tag: 'markdown' as const, content: `**${this.escapeMarkdown(cleaned)}**` }];
+    } else if (useCodeBlock) {
+      // Structured formats: code blocks with syntax highlighting
       const chunks = this.splitContent(cleaned, MAX_CARD_CONTENT_LENGTH);
       elements = chunks.map(chunk => ({
         tag: 'markdown' as const,
         content: `\`\`\`${lang}\n${chunk}\n\`\`\``,
       }));
+    } else {
+      // Plain markdown text (escaped to prevent formatting)
+      const chunks = this.splitContent(cleaned, MAX_CARD_CONTENT_LENGTH);
+      elements = chunks.map(chunk => ({
+        tag: 'markdown' as const,
+        content: this.escapeMarkdown(chunk),
+      }));
     }
 
+    // Footer
     const footerParts: string[] = [];
     if (opts?.sessionId !== undefined) footerParts.push(`Session #${opts.sessionId}`);
     if (opts?.cwd) footerParts.push(opts.cwd);
     if (opts?.durationMs !== undefined) footerParts.push(`${(opts.durationMs / 1000).toFixed(1)}s`);
     if (footerParts.length > 0) {
-      elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: footerParts.join('  ·  ') }] });
+      elements.push({ tag: 'note', elements: [{ tag: 'plain_text', content: footerParts.join('  \u00b7  ') }] });
     }
     return this.card(title, color, elements);
   }
