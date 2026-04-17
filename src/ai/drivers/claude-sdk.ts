@@ -1,9 +1,53 @@
 import { query, type Query, type SDKMessage, type Options as SDKOptions, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
+import { readFileSync } from 'fs';
+import { join } from 'path';
+import { homedir } from 'os';
 import { getConfig } from '../../config';
 import type { AISessionDriver, PendingPermission } from '../types';
 import type { AIManagerCallbacks } from '../manager';
 import { pendingRequests, modelOverrides } from '../../state';
 import { buildMetadata, createThrottledUpdater, createPendingRequest } from '../shared';
+
+/** Keys the SDK child process needs to authenticate and route to the right provider. */
+const REQUIRED_ENV_KEYS = [
+  'ANTHROPIC_API_KEY',
+  'ANTHROPIC_BASE_URL',
+  'ANTHROPIC_DEFAULT_OPUS_MODEL',
+  'ANTHROPIC_DEFAULT_SONNET_MODEL',
+  'ANTHROPIC_DEFAULT_HAIKU_MODEL',
+] as const;
+
+/**
+ * Ensure ANTHROPIC_* env vars are present in process.env.
+ * If any are missing, fill them from ~/.claude/settings.json → env.
+ */
+let _envPatched = false;
+function ensureClaudeEnv(): void {
+  if (_envPatched) return;
+  _envPatched = true;
+
+  const missing = REQUIRED_ENV_KEYS.filter(k => !process.env[k]);
+  if (missing.length === 0) return;
+
+  try {
+    const settingsPath = join(homedir(), '.claude', 'settings.json');
+    const settings = JSON.parse(readFileSync(settingsPath, 'utf-8'));
+    const envBlock: Record<string, string> = settings.env ?? {};
+
+    for (const key of missing) {
+      if (envBlock[key]) {
+        process.env[key] = envBlock[key];
+      }
+    }
+
+    const filled = missing.filter(k => process.env[k]);
+    if (filled.length > 0) {
+      console.log(`[CLAUDE-SDK] Patched env from ~/.claude/settings.json: ${filled.join(', ')}`);
+    }
+  } catch {
+    // settings.json not found or unreadable — no-op
+  }
+}
 
 interface ClaudeSession {
   conversationId: string;
@@ -40,6 +84,8 @@ export class ClaudeSDKDriver implements AISessionDriver {
   }
 
   async sendMessage(conversationId: string, message: string): Promise<void> {
+    ensureClaudeEnv();
+
     const session = this.sessions.get(conversationId);
     if (!session) {
       this.callbacks.onError(conversationId, 'No active Claude session');

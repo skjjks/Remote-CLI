@@ -59,3 +59,24 @@ If gstack skills aren't working, run:
 cd .claude/skills/gstack && ./setup
 ```
 This rebuilds the binary and registers all skills.
+
+## graphify
+
+A knowledge graph of this codebase lives at `graphify-out/graph.json` (305 nodes, 657 edges, 33 communities).
+
+**Before answering codebase architecture questions**, check the graph first:
+```
+/graphify query "<question>"
+```
+
+**After making code changes**, the graph auto-updates for code-only changes if `--watch` is running. For doc changes, run:
+```
+/graphify . --update
+```
+
+Key outputs:
+- `graphify-out/graph.html` — interactive visualization (open in browser)
+- `graphify-out/GRAPH_REPORT.md` — audit report with god nodes, surprising connections
+- `graphify-out/graph.json` — raw graph data for queries
+
+To uninstall: remove this `## graphify` section from CLAUDE.md.
