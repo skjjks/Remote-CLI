@@ -37,8 +37,9 @@ temp/
 # Claude plugins/skills (managed separately)
 .claude/
 
-# Docs (specs, plans — managed separately)
-docs/
+# Docs (specs, plans — managed separately, but keep images for README)
+docs/*
+!docs/images/
 
 # Context files
 .context/

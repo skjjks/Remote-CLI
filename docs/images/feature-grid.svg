@@ -1,0 +1,106 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 840 280" fill="none">
+  <defs>
+    <filter id="card-shadow">
+      <feDropShadow dx="0" dy="4" stdDeviation="8" flood-color="#000" flood-opacity="0.15"/>
+    </filter>
+  </defs>
+
+  <!-- Card 1: AI Dual Backend -->
+  <g transform="translate(0, 0)" filter="url(#card-shadow)">
+    <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#f5a623" stroke-opacity="0.2" stroke-width="1"/>
+    <rect width="260" height="4" rx="2" fill="#f5a623"/>
+    <!-- Icon -->
+    <circle cx="36" cy="44" r="20" fill="#f5a623" fill-opacity="0.15"/>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">🤖</text>
+    <!-- Text -->
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">AI 双引擎</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">Claude Code + opencode 无缝切换</text>
+    <!-- Feature pills -->
+    <rect x="12" y="74" width="70" height="22" rx="11" fill="#f5a623" fill-opacity="0.12"/>
+    <text x="47" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#f5a623">流式输出</text>
+    <rect x="88" y="74" width="70" height="22" rx="11" fill="#7c3aed" fill-opacity="0.12"/>
+    <text x="123" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a78bfa">模型热切</text>
+    <rect x="164" y="74" width="80" height="22" rx="11" fill="#4a9eff" fill-opacity="0.12"/>
+    <text x="204" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">会话恢复</text>
+  </g>
+
+  <!-- Card 2: Remote Terminal -->
+  <g transform="translate(290, 0)" filter="url(#card-shadow)">
+    <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#4a9eff" stroke-opacity="0.2" stroke-width="1"/>
+    <rect width="260" height="4" rx="2" fill="#4a9eff"/>
+    <circle cx="36" cy="44" r="20" fill="#4a9eff" fill-opacity="0.15"/>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">🖥️</text>
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">远程终端</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">完整 shell + 交互式程序支持</text>
+    <rect x="12" y="74" width="80" height="22" rx="11" fill="#4a9eff" fill-opacity="0.12"/>
+    <text x="52" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">vim/htop</text>
+    <rect x="98" y="74" width="70" height="22" rx="11" fill="#52c41a" fill-opacity="0.12"/>
+    <text x="133" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">快捷键</text>
+    <rect x="174" y="74" width="70" height="22" rx="11" fill="#ff6b6b" fill-opacity="0.12"/>
+    <text x="209" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#ff6b6b">ANSI 清理</text>
+  </g>
+
+  <!-- Card 3: Smart Cards -->
+  <g transform="translate(580, 0)" filter="url(#card-shadow)">
+    <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#52c41a" stroke-opacity="0.2" stroke-width="1"/>
+    <rect width="260" height="4" rx="2" fill="#52c41a"/>
+    <circle cx="36" cy="44" r="20" fill="#52c41a" fill-opacity="0.15"/>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">🃏</text>
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">智能卡片</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">飞书原生卡片 · 语法高亮 · 颜色区分</text>
+    <rect x="12" y="74" width="70" height="22" rx="11" fill="#f5a623" fill-opacity="0.12"/>
+    <text x="47" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#f5a623">🟠 Claude</text>
+    <rect x="88" y="74" width="70" height="22" rx="11" fill="#4a9eff" fill-opacity="0.12"/>
+    <text x="123" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">🔵 终端</text>
+    <rect x="164" y="74" width="80" height="22" rx="11" fill="#888" fill-opacity="0.12"/>
+    <text x="204" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#aaa">⚫ opencode</text>
+  </g>
+
+  <!-- Card 4: Session Management -->
+  <g transform="translate(0, 150)" filter="url(#card-shadow)">
+    <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#7c3aed" stroke-opacity="0.2" stroke-width="1"/>
+    <rect width="260" height="4" rx="2" fill="#7c3aed"/>
+    <circle cx="36" cy="44" r="20" fill="#7c3aed" fill-opacity="0.15"/>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">📋</text>
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">会话管理</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">多会话共存 · 自由切换 · 持久化</text>
+    <rect x="12" y="74" width="72" height="22" rx="11" fill="#7c3aed" fill-opacity="0.12"/>
+    <text x="48" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a78bfa">!switch</text>
+    <rect x="90" y="74" width="60" height="22" rx="11" fill="#52c41a" fill-opacity="0.12"/>
+    <text x="120" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">!new</text>
+    <rect x="156" y="74" width="88" height="22" rx="11" fill="#4a9eff" fill-opacity="0.12"/>
+    <text x="200" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">24h 自动清理</text>
+  </g>
+
+  <!-- Card 5: Cloud Dev -->
+  <g transform="translate(290, 150)" filter="url(#card-shadow)">
+    <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#ff6b6b" stroke-opacity="0.2" stroke-width="1"/>
+    <rect width="260" height="4" rx="2" fill="#ff6b6b"/>
+    <circle cx="36" cy="44" r="20" fill="#ff6b6b" fill-opacity="0.15"/>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">☁️</text>
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">工程云连接</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">一键 SSH · 自动堡垒机认证</text>
+    <rect x="12" y="74" width="80" height="22" rx="11" fill="#ff6b6b" fill-opacity="0.12"/>
+    <text x="52" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#ff6b6b">扫码登录</text>
+    <rect x="98" y="74" width="80" height="22" rx="11" fill="#f5a623" fill-opacity="0.12"/>
+    <text x="138" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#f5a623">自动密码</text>
+    <rect x="184" y="74" width="60" height="22" rx="11" fill="#52c41a" fill-opacity="0.12"/>
+    <text x="214" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">sync</text>
+  </g>
+
+  <!-- Card 6: Security -->
+  <g transform="translate(580, 150)" filter="url(#card-shadow)">
+    <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#febc2e" stroke-opacity="0.2" stroke-width="1"/>
+    <rect width="260" height="4" rx="2" fill="#febc2e"/>
+    <circle cx="36" cy="44" r="20" fill="#febc2e" fill-opacity="0.15"/>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">🔒</text>
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">安全控制</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">用户白名单 · 工具权限确认</text>
+    <rect x="12" y="74" width="90" height="22" rx="11" fill="#febc2e" fill-opacity="0.12"/>
+    <text x="57" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#febc2e">ALLOWED_USERS</text>
+    <rect x="108" y="74" width="80" height="22" rx="11" fill="#4a9eff" fill-opacity="0.12"/>
+    <text x="148" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">权限弹窗</text>
+    <rect x="194" y="74" width="54" height="22" rx="11" fill="#52c41a" fill-opacity="0.12"/>
+    <text x="221" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">鉴权</text>
+  </g>
+</svg>

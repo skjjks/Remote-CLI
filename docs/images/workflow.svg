@@ -1,0 +1,63 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 200" fill="none">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#000" flood-opacity="0.2"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#4a9eff"/>
+    </marker>
+  </defs>
+
+  <!-- Step 1: Alert -->
+  <g transform="translate(20, 30)" filter="url(#shadow)">
+    <rect width="140" height="140" rx="16" fill="#1e1e2e" stroke="#ff6b6b" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="70" y="42" text-anchor="middle" font-size="32">🚨</text>
+    <text x="70" y="70" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">收到告警</text>
+    <text x="70" y="90" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#888">服务器异常</text>
+    <text x="70" y="106" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#888">CPU 飙升</text>
+    <rect x="20" y="118" width="100" height="16" rx="8" fill="#ff6b6b" fill-opacity="0.15"/>
+    <text x="70" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#ff6b6b">地铁上 · 手机</text>
+  </g>
+
+  <!-- Arrow 1 -->
+  <line x1="170" y1="100" x2="200" y2="100" stroke="#4a9eff" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 2: Feishu -->
+  <g transform="translate(210, 30)" filter="url(#shadow)">
+    <rect width="140" height="140" rx="16" fill="#1e1e2e" stroke="#4a9eff" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="70" y="42" text-anchor="middle" font-size="32">💬</text>
+    <text x="70" y="70" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">打开飞书</text>
+    <text x="70" y="90" text-anchor="middle" font-family="monospace" font-size="11" fill="#4a9eff">!sh pm2 logs</text>
+    <text x="70" y="106" text-anchor="middle" font-family="monospace" font-size="11" fill="#4a9eff">--lines 50</text>
+    <rect x="20" y="118" width="100" height="16" rx="8" fill="#4a9eff" fill-opacity="0.15"/>
+    <text x="70" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#4a9eff">发一条消息</text>
+  </g>
+
+  <!-- Arrow 2 -->
+  <line x1="360" y1="100" x2="390" y2="100" stroke="#4a9eff" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: Terminal -->
+  <g transform="translate(400, 30)" filter="url(#shadow)">
+    <rect width="140" height="140" rx="16" fill="#1e1e2e" stroke="#52c41a" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="70" y="42" text-anchor="middle" font-size="32">🖥️</text>
+    <text x="70" y="70" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">执行命令</text>
+    <text x="70" y="90" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#888">查日志 · 重启</text>
+    <text x="70" y="106" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#888">修配置 · 监控</text>
+    <rect x="20" y="118" width="100" height="16" rx="8" fill="#52c41a" fill-opacity="0.15"/>
+    <text x="70" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#52c41a">服务器在手里</text>
+  </g>
+
+  <!-- Arrow 3 -->
+  <line x1="550" y1="100" x2="580" y2="100" stroke="#4a9eff" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 4: AI -->
+  <g transform="translate(590, 30)" filter="url(#shadow)">
+    <rect width="180" height="140" rx="16" fill="#1e1e2e" stroke="#f5a623" stroke-opacity="0.3" stroke-width="1"/>
+    <text x="90" y="42" text-anchor="middle" font-size="32">🧠</text>
+    <text x="90" y="70" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">AI 分析修复</text>
+    <text x="90" y="90" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#888">「帮我看下报错原因」</text>
+    <text x="90" y="106" text-anchor="middle" font-family="system-ui, sans-serif" font-size="11" fill="#888">AI 自动读码 → 定位 → 修复</text>
+    <rect x="30" y="118" width="120" height="16" rx="8" fill="#f5a623" fill-opacity="0.15"/>
+    <text x="90" y="130" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#f5a623">Claude / opencode</text>
+  </g>
+</svg>

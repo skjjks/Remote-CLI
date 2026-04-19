@@ -1,0 +1,86 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 600 420" fill="none">
+  <defs>
+    <filter id="shadow">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <linearGradient id="user-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4a9eff"/><stop offset="100%" stop-color="#3a7bd5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Phone frame -->
+  <g filter="url(#shadow)">
+    <rect x="140" y="10" width="320" height="400" rx="32" fill="#1a1a2e" stroke="#333" stroke-width="2"/>
+
+    <!-- Status bar -->
+    <text x="172" y="38" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#888">9:41</text>
+    <text x="408" y="38" font-family="system-ui, sans-serif" font-size="11" fill="#888">100%</text>
+
+    <!-- Chat header -->
+    <rect x="156" y="48" width="288" height="40" rx="0" fill="#252540"/>
+    <circle cx="180" cy="68" r="14" fill="#4a9eff"/>
+    <text x="180" y="73" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">R</text>
+    <text x="202" y="64" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">Remote CLI</text>
+    <text x="202" y="78" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">Online</text>
+
+    <!-- User message 1: docker ps -->
+    <rect x="246" y="100" width="180" height="30" rx="14" fill="url(#user-grad)"/>
+    <text x="336" y="119" text-anchor="middle" font-family="monospace" font-size="12" fill="white">!sh docker ps</text>
+
+    <!-- Bot card 1: docker result -->
+    <g transform="translate(164, 140)">
+      <rect width="264" height="90" rx="12" fill="#252540" stroke="#4a9eff" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="264" height="4" rx="2" fill="#4a9eff"/>
+      <text x="12" y="22" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#4a9eff">Terminal · Done</text>
+
+      <text x="12" y="42" font-family="monospace" font-size="9" fill="#666">NAMES          STATUS         PORTS</text>
+      <text x="12" y="56" font-family="monospace" font-size="9" fill="#52c41a">nginx          Up 3h     80/tcp</text>
+      <text x="12" y="70" font-family="monospace" font-size="9" fill="#52c41a">redis          Up 3h     6379/tcp</text>
+
+      <text x="12" y="86" font-family="system-ui, sans-serif" font-size="9" fill="#666">执行耗时: 0.3s</text>
+    </g>
+
+    <!-- User message 2: pm2 list -->
+    <rect x="256" y="244" width="170" height="30" rx="14" fill="url(#user-grad)"/>
+    <text x="341" y="263" text-anchor="middle" font-family="monospace" font-size="12" fill="white">!sh pm2 list</text>
+
+    <!-- Bot card 2: pm2 result -->
+    <g transform="translate(164, 284)">
+      <rect width="264" height="100" rx="12" fill="#252540" stroke="#4a9eff" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="264" height="4" rx="2" fill="#4a9eff"/>
+      <text x="12" y="22" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#4a9eff">Terminal · Done</text>
+
+      <text x="12" y="42" font-family="monospace" font-size="9" fill="#666">│ id │ name       │ status │ cpu  │</text>
+      <text x="12" y="56" font-family="monospace" font-size="9">
+        <tspan fill="#666">│ </tspan><tspan fill="#f5a623">0</tspan><tspan fill="#666">  │ </tspan><tspan fill="#4a9eff">remote-cli</tspan><tspan fill="#666"> │ </tspan><tspan fill="#52c41a">online</tspan><tspan fill="#666"> │ 0.3% │</tspan>
+      </text>
+      <text x="12" y="70" font-family="monospace" font-size="9">
+        <tspan fill="#666">│ </tspan><tspan fill="#f5a623">1</tspan><tspan fill="#666">  │ </tspan><tspan fill="#4a9eff">api-server</tspan><tspan fill="#666"> │ </tspan><tspan fill="#52c41a">online</tspan><tspan fill="#666"> │ 1.2% │</tspan>
+      </text>
+
+      <text x="12" y="92" font-family="system-ui, sans-serif" font-size="9" fill="#666">执行耗时: 0.2s</text>
+    </g>
+
+    <!-- Home indicator -->
+    <rect x="256" y="398" width="88" height="4" rx="2" fill="#444"/>
+  </g>
+
+  <!-- Left annotations -->
+  <g transform="translate(10, 104)">
+    <text x="116" y="14" text-anchor="end" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#4a9eff">用户发消息</text>
+    <text x="116" y="28" text-anchor="end" font-family="system-ui, sans-serif" font-size="10" fill="#888">!sh + shell 命令</text>
+  </g>
+
+  <!-- Right annotations -->
+  <g transform="translate(480, 155)">
+    <text x="6" y="14" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#4a9eff">Bot 回复卡片</text>
+    <text x="6" y="28" font-family="system-ui, sans-serif" font-size="10" fill="#888">语法高亮 · 颜色区分</text>
+    <text x="6" y="42" font-family="system-ui, sans-serif" font-size="10" fill="#888">ANSI 清理 · 耗时统计</text>
+  </g>
+
+  <g transform="translate(480, 310)">
+    <text x="6" y="14" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="#52c41a">表格自动格式化</text>
+    <text x="6" y="28" font-family="system-ui, sans-serif" font-size="10" fill="#888">pm2 / docker 等宽表</text>
+    <text x="6" y="42" font-family="system-ui, sans-serif" font-size="10" fill="#888">200 列终端不截断</text>
+  </g>
+</svg>
