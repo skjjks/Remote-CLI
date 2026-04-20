@@ -4,10 +4,11 @@ import { getFeishuBot } from './bot/feishu';
 import { getSessionManager, type SessionInfo } from './terminal/session';
 import * as tmux from './terminal/tmux';
 import { getShortcutKey } from './terminal/interactive';
-import { activeSessions, pendingPrompts, COMMAND_PREFIX, smartCard } from './state';
+import { activeSessions, pendingPrompts, pendingFileUploads, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
 import { handleCloudCommand, forwardToClouddev } from './handlers/clouddev';
+import { handleFileUpload, handleFileDownload, handleFileOverwriteResponse } from './handlers/file';
 import type { AIManager } from './ai/manager';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
 
@@ -92,6 +93,10 @@ async function handleCommand(
       case 'cloud':
         await handleCloudCommand(conversationId, args[0]);
         return;
+      case 'dl':
+      case 'download':
+        await handleFileDownload(conversationId, args.join(' '));
+        return;
       case 'whoami':
         await feishuBot.sendText(conversationId, `Your User ID: ${senderId}`);
         return;
@@ -125,6 +130,12 @@ async function handleCommand(
         }
       }
     }
+  }
+
+  // Handle file overwrite confirmation responses
+  if (pendingFileUploads.has(conversationId)) {
+    const handled = await handleFileOverwriteResponse(conversationId, trimmedMessage);
+    if (handled) return;
   }
 
   // Route to active session
@@ -212,6 +223,21 @@ async function main(): Promise<void> {
       const message = feishuBot.parseMessage(data);
       if (message) {
         console.log(`[MSG] ${message.content.slice(0, 50)}`);
+
+        // Handle file/image messages separately
+        if (message.messageType === 'file' || message.messageType === 'image') {
+          if (message.fileKey && message.fileName) {
+            const resourceType = message.messageType === 'image' ? 'image' : 'file';
+            const reactionId = await feishuBot.addReaction(message.messageId, 'Typing');
+            handleFileUpload(message.conversationId, message.messageId, message.fileKey, message.fileName, resourceType)
+              .catch(err => console.error('[FILE] Upload error:', err))
+              .finally(() => {
+                if (reactionId) feishuBot.removeReaction(message.messageId, reactionId).catch(() => {});
+              });
+          }
+          return;
+        }
+
         // Add typing reaction, process, then remove
         const doWork = async () => {
           const reactionId = await feishuBot.addReaction(message.messageId, 'Typing');
