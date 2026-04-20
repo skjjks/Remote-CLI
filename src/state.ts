@@ -41,6 +41,22 @@ export interface PendingRequest {
  */
 export const pendingRequests: Map<string, PendingRequest> = new Map();
 
+/**
+ * A pending file upload overwrite confirmation request waiting for user response.
+ */
+export interface PendingFileUpload {
+  messageId: string;
+  fileKey: string;
+  fileName: string;
+  resourceType: 'file' | 'image';
+}
+
+/**
+ * Pending file upload overwrite confirmations.
+ * Keyed by conversationId. Bounded by active conversations — entries are removed after confirmation or session kill.
+ */
+export const pendingFileUploads: Map<string, PendingFileUpload> = new Map();
+
 /** Command history per conversation (most recent last) */
 export const commandHistory: Map<string, string[]> = new Map();
 
