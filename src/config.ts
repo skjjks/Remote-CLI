@@ -1,5 +1,6 @@
 import dotenv from 'dotenv';
 import path from 'path';
+import os from 'os';
 
 // Load environment variables
 dotenv.config();
@@ -53,6 +54,9 @@ export interface Config {
     imageType: string;
     relayHost: string;
     emailPassword: string;
+  };
+  upload: {
+    dir: string;
   };
 }
 
@@ -134,6 +138,9 @@ export function loadConfig(): Config {
       imageType: getEnvVar('CLOUDDEV_IMAGE_TYPE', 'android'),
       relayHost: getEnvVar('CLOUDDEV_RELAY_HOST', 'relay.xiaomi.com'),
       emailPassword: getEnvVar('CLOUDDEV_EMAIL_PASSWORD', ''),
+    },
+    upload: {
+      dir: getEnvVar('UPLOAD_DIR', path.join(os.homedir(), 'uploads')),
     },
   };
 }

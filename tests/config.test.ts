@@ -201,6 +201,26 @@ describe('Config Module', () => {
       expect(config.clouddev.relayHost).toBe('relay2.xiaomi.com');
       expect(config.clouddev.emailPassword).toBe('secret123');
     });
+
+    it('should load upload config with defaults', () => {
+      process.env.FEISHU_APP_ID = 'test_app_id';
+      process.env.FEISHU_APP_SECRET = 'test_app_secret';
+      delete process.env.UPLOAD_DIR;
+
+      const config = loadConfig();
+
+      expect(config.upload.dir).toBe(require('path').join(require('os').homedir(), 'uploads'));
+    });
+
+    it('should load custom upload dir from env', () => {
+      process.env.FEISHU_APP_ID = 'test_app_id';
+      process.env.FEISHU_APP_SECRET = 'test_app_secret';
+      process.env.UPLOAD_DIR = '/tmp/my-uploads';
+
+      const config = loadConfig();
+
+      expect(config.upload.dir).toBe('/tmp/my-uploads');
+    });
   });
 
   describe('getConfig', () => {
