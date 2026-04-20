@@ -1,5 +1,7 @@
 import fs from 'fs';
 import path from 'path';
+import { execSync } from 'child_process';
+import os from 'os';
 import { getFeishuBot } from '../bot/feishu';
 import { getConfig } from '../config';
 import { pendingFileUploads } from '../state';
@@ -29,7 +31,8 @@ export async function handleFileUpload(
 
   ensureDir(uploadDir);
 
-  const destPath = path.join(uploadDir, fileName);
+  const safeName = path.basename(fileName);
+  const destPath = path.join(uploadDir, safeName);
 
   if (fs.existsSync(destPath)) {
     pendingFileUploads.set(conversationId, {
@@ -60,7 +63,7 @@ export async function handleFileOverwriteResponse(
   pendingFileUploads.delete(conversationId);
 
   if (response === '1') {
-    const destPath = path.join(config.upload.dir, pending.fileName);
+    const destPath = path.join(config.upload.dir, path.basename(pending.fileName));
     await downloadAndSave(
       conversationId,
       pending.messageId,
@@ -94,5 +97,75 @@ async function downloadAndSave(
   } catch (error) {
     const msg = error instanceof Error ? error.message : String(error);
     await feishuBot.sendText(conversationId, `Failed to save file: ${msg}`);
+  }
+}
+
+const IMAGE_EXTENSIONS = new Set(['.png', '.jpg', '.jpeg', '.gif', '.webp']);
+const MAX_IMAGE_SIZE = 10 * 1024 * 1024;
+const MAX_FILE_SIZE = 30 * 1024 * 1024;
+
+function isImageFile(filePath: string): boolean {
+  return IMAGE_EXTENSIONS.has(path.extname(filePath).toLowerCase());
+}
+
+export async function handleFileDownload(
+  conversationId: string,
+  targetPath: string,
+): Promise<void> {
+  const feishuBot = getFeishuBot();
+
+  const resolvedPath = targetPath.startsWith('~')
+    ? path.join(os.homedir(), targetPath.slice(1))
+    : targetPath;
+
+  if (!fs.existsSync(resolvedPath)) {
+    await feishuBot.sendText(conversationId, `File not found: ${targetPath}`);
+    return;
+  }
+
+  const stats = fs.statSync(resolvedPath);
+  let filePath = resolvedPath;
+  let fileName = path.basename(resolvedPath);
+  let tmpTar: string | null = null;
+
+  if (stats.isDirectory()) {
+    const tarName = `${fileName}.tar.gz`;
+    tmpTar = path.join(os.tmpdir(), tarName);
+    try {
+      execSync(`tar -czf "${tmpTar}" -C "${path.dirname(resolvedPath)}" "${fileName}"`, {
+        timeout: 60000,
+      });
+    } catch (error) {
+      const msg = error instanceof Error ? error.message : String(error);
+      await feishuBot.sendText(conversationId, `Failed to pack directory: ${msg}`);
+      return;
+    }
+    filePath = tmpTar;
+    fileName = tarName;
+  }
+
+  try {
+    const fileStats = fs.statSync(filePath);
+    const fileSize = fileStats.size;
+
+    if (isImageFile(filePath) && fileSize <= MAX_IMAGE_SIZE) {
+      const imageKey = await feishuBot.uploadImage(filePath);
+      await feishuBot.sendImageMessage(conversationId, imageKey);
+    } else if (fileSize <= MAX_FILE_SIZE) {
+      const fileKey = await feishuBot.uploadFile(filePath, fileName);
+      await feishuBot.sendFileMessage(conversationId, fileKey, fileName);
+    } else {
+      await feishuBot.sendText(
+        conversationId,
+        `File exceeds Feishu 30MB limit (current: ${formatSize(fileSize)})\nUse: scp ${os.userInfo().username}@${os.hostname()}:${resolvedPath} ./`,
+      );
+    }
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    await feishuBot.sendText(conversationId, `Failed to send file: ${msg}`);
+  } finally {
+    if (tmpTar && fs.existsSync(tmpTar)) {
+      fs.unlinkSync(tmpTar);
+    }
   }
 }

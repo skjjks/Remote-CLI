@@ -5,11 +5,19 @@ import path from 'path';
 
 const mockDownloadResource = vi.fn();
 const mockSendText = vi.fn();
+const mockUploadFile = vi.fn();
+const mockUploadImage = vi.fn();
+const mockSendFileMessage = vi.fn();
+const mockSendImageMessage = vi.fn();
 
 vi.mock('../src/bot/feishu', () => ({
   getFeishuBot: () => ({
     downloadResource: mockDownloadResource,
     sendText: mockSendText,
+    uploadFile: mockUploadFile,
+    uploadImage: mockUploadImage,
+    sendFileMessage: mockSendFileMessage,
+    sendImageMessage: mockSendImageMessage,
   }),
 }));
 
@@ -29,7 +37,7 @@ vi.mock('../src/state', async (importOriginal) => {
   };
 });
 
-import { handleFileUpload, handleFileOverwriteResponse } from '../src/handlers/file';
+import { handleFileUpload, handleFileOverwriteResponse, handleFileDownload } from '../src/handlers/file';
 import { pendingFileUploads } from '../src/state';
 
 describe('handleFileUpload', () => {
@@ -142,5 +150,77 @@ describe('handleFileOverwriteResponse', () => {
     expect(mockDownloadResource).not.toHaveBeenCalled();
     expect(mockSendText).toHaveBeenCalledWith('chat_001', 'Upload cancelled.');
     expect(pendingFileUploads.has('chat_001')).toBe(false);
+  });
+});
+
+describe('handleFileDownload', () => {
+  let tmpDir: string;
+
+  beforeEach(() => {
+    tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'download-test-'));
+    mockUploadFile.mockReset();
+    mockUploadImage.mockReset();
+    mockSendFileMessage.mockReset();
+    mockSendImageMessage.mockReset();
+    mockSendText.mockReset();
+  });
+
+  afterEach(() => {
+    fs.rmSync(tmpDir, { recursive: true, force: true });
+  });
+
+  it('should send file for non-image files under 30MB', async () => {
+    const filePath = path.join(tmpDir, 'report.pdf');
+    fs.writeFileSync(filePath, 'a'.repeat(1000));
+    mockUploadFile.mockResolvedValue('uploaded_key');
+
+    await handleFileDownload('chat_001', filePath);
+
+    expect(mockUploadFile).toHaveBeenCalledWith(filePath, 'report.pdf');
+    expect(mockSendFileMessage).toHaveBeenCalledWith('chat_001', 'uploaded_key', 'report.pdf');
+  });
+
+  it('should send image for png files under 10MB', async () => {
+    const filePath = path.join(tmpDir, 'screenshot.png');
+    fs.writeFileSync(filePath, 'fake-png');
+    mockUploadImage.mockResolvedValue('uploaded_img_key');
+
+    await handleFileDownload('chat_001', filePath);
+
+    expect(mockUploadImage).toHaveBeenCalledWith(filePath);
+    expect(mockSendImageMessage).toHaveBeenCalledWith('chat_001', 'uploaded_img_key');
+  });
+
+  it('should show error for non-existent path', async () => {
+    await handleFileDownload('chat_001', '/nonexistent/file.txt');
+
+    expect(mockSendText).toHaveBeenCalledWith('chat_001', expect.stringContaining('not found'));
+  });
+
+  it('should pack directory into tar.gz and send', async () => {
+    const dirPath = path.join(tmpDir, 'mydir');
+    fs.mkdirSync(dirPath);
+    fs.writeFileSync(path.join(dirPath, 'a.txt'), 'hello');
+    mockUploadFile.mockResolvedValue('tar_key');
+
+    await handleFileDownload('chat_001', dirPath);
+
+    expect(mockUploadFile).toHaveBeenCalledWith(
+      expect.stringContaining('mydir.tar.gz'),
+      'mydir.tar.gz',
+    );
+    expect(mockSendFileMessage).toHaveBeenCalledWith('chat_001', 'tar_key', 'mydir.tar.gz');
+  });
+
+  it('should show scp hint for files over 30MB', async () => {
+    const filePath = path.join(tmpDir, 'huge.bin');
+    const fd = fs.openSync(filePath, 'w');
+    fs.ftruncateSync(fd, 31 * 1024 * 1024);
+    fs.closeSync(fd);
+
+    await handleFileDownload('chat_001', filePath);
+
+    expect(mockSendText).toHaveBeenCalledWith('chat_001', expect.stringContaining('scp'));
+    expect(mockUploadFile).not.toHaveBeenCalled();
   });
 });
