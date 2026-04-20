@@ -318,7 +318,7 @@ export class FeishuBot {
    * Download a file or image resource from a message
    */
   async downloadResource(messageId: string, fileKey: string, type: 'file' | 'image', destPath: string): Promise<void> {
-    const resp = await this.client.im.message.resources({
+    const resp = await (this.client.im.message as any).resources({
       path: { message_id: messageId, file_key: fileKey },
       params: { type },
     });
