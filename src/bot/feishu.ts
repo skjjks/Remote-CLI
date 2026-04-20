@@ -1,6 +1,7 @@
 import * as lark from '@larksuiteoapi/node-sdk';
 import crypto from 'crypto';
 import express from 'express';
+import fs from 'fs';
 import { getConfig } from '../config';
 
 export interface FeishuMessage {
@@ -311,6 +312,74 @@ export class FeishuBot {
       console.error('Failed to reply text:', error);
       throw error;
     }
+  }
+
+  /**
+   * Download a file or image resource from a message
+   */
+  async downloadResource(messageId: string, fileKey: string, type: 'file' | 'image', destPath: string): Promise<void> {
+    const resp = await this.client.im.message.resources({
+      path: { message_id: messageId, file_key: fileKey },
+      params: { type },
+    });
+    await (resp as any).writeFile(destPath);
+  }
+
+  /**
+   * Upload a file to Feishu and return the file_key
+   */
+  async uploadFile(filePath: string, fileName: string): Promise<string> {
+    const resp = await this.client.im.file.create({
+      data: {
+        file_type: 'stream',
+        file_name: fileName,
+        file: fs.readFileSync(filePath),
+      },
+    });
+    const data = (resp as any)?.data;
+    return data?.file_key as string;
+  }
+
+  /**
+   * Upload an image to Feishu and return the image_key
+   */
+  async uploadImage(filePath: string): Promise<string> {
+    const resp = await this.client.im.image.create({
+      data: {
+        image_type: 'message',
+        image: fs.readFileSync(filePath),
+      },
+    });
+    const data = (resp as any)?.data;
+    return data?.image_key as string;
+  }
+
+  /**
+   * Send a file message to a conversation
+   */
+  async sendFileMessage(conversationId: string, fileKey: string, fileName: string): Promise<void> {
+    await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: conversationId,
+        msg_type: 'file',
+        content: JSON.stringify({ file_key: fileKey }),
+      },
+    });
+  }
+
+  /**
+   * Send an image message to a conversation
+   */
+  async sendImageMessage(conversationId: string, imageKey: string): Promise<void> {
+    await this.client.im.message.create({
+      params: { receive_id_type: 'chat_id' },
+      data: {
+        receive_id: conversationId,
+        msg_type: 'image',
+        content: JSON.stringify({ image_key: imageKey }),
+      },
+    });
   }
 
   /**
