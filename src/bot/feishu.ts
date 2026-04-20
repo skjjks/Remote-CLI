@@ -8,7 +8,9 @@ export interface FeishuMessage {
   conversationId: string;
   senderId: string;
   content: string;
-  messageType: 'text' | 'post' | 'interactive';
+  messageType: 'text' | 'post' | 'interactive' | 'file' | 'image';
+  fileKey?: string;
+  fileName?: string;
 }
 
 export interface FeishuCardAction {
@@ -85,8 +87,37 @@ export class FeishuBot {
       let content = '';
       let messageType: FeishuMessage['messageType'] = 'text';
 
+      const msgType = message.message_type as string | undefined;
+
       if (message.content) {
         const parsed = JSON.parse(message.content as string);
+
+        if (msgType === 'file') {
+          messageType = 'file';
+          return {
+            messageId: message.message_id as string,
+            conversationId: message.chat_id as string,
+            senderId,
+            content: '',
+            messageType,
+            fileKey: parsed.file_key as string,
+            fileName: parsed.file_name as string,
+          };
+        }
+
+        if (msgType === 'image') {
+          messageType = 'image';
+          return {
+            messageId: message.message_id as string,
+            conversationId: message.chat_id as string,
+            senderId,
+            content: '',
+            messageType,
+            fileKey: parsed.image_key as string,
+            fileName: 'image.png',
+          };
+        }
+
         if (parsed.text) {
           content = parsed.text;
         } else if (parsed.post) {
