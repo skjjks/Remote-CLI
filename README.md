@@ -106,6 +106,12 @@ opencode：正在分析...
 
 在飞书和服务器之间双向传输文件——发文件自动上传到服务器，`!dl` 把服务器文件发回飞书。
 
+<div align="center">
+
+<img src="docs/images/file-transfer.svg" alt="文件传输流程" width="100%"/>
+
+</div>
+
 <table>
 <tr>
 <td width="50%">

@@ -1,0 +1,134 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 680 480" fill="none">
+  <defs>
+    <filter id="ft-shadow">
+      <feDropShadow dx="0" dy="6" stdDeviation="12" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+    <linearGradient id="ft-user-grad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4a9eff"/><stop offset="100%" stop-color="#3a7bd5"/>
+    </linearGradient>
+  </defs>
+
+  <!-- ═══════ LEFT: Upload (Feishu → Server) ═══════ -->
+
+  <g filter="url(#ft-shadow)">
+    <rect x="10" y="10" width="320" height="460" rx="32" fill="#1a1a2e" stroke="#333" stroke-width="2"/>
+
+    <!-- Status bar -->
+    <text x="42" y="38" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#888">9:41</text>
+    <text x="278" y="38" font-family="system-ui, sans-serif" font-size="11" fill="#888">100%</text>
+
+    <!-- Chat header -->
+    <rect x="26" y="48" width="288" height="40" rx="0" fill="#252540"/>
+    <circle cx="50" cy="68" r="14" fill="#52c41a"/>
+    <text x="50" y="73" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">R</text>
+    <text x="72" y="64" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">Remote CLI</text>
+    <text x="72" y="78" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">Upload</text>
+
+    <!-- User sends file (bubble with file icon) -->
+    <rect x="146" y="100" width="170" height="44" rx="14" fill="url(#ft-user-grad)"/>
+    <text x="168" y="118" font-size="16">📄</text>
+    <text x="188" y="118" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="white">screenshot.png</text>
+    <text x="188" y="134" font-family="system-ui, sans-serif" font-size="10" fill="rgba(255,255,255,0.7)">245 KB</text>
+
+    <!-- Bot reply: file saved -->
+    <g transform="translate(34, 156)">
+      <rect width="260" height="68" rx="12" fill="#252540" stroke="#52c41a" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="260" height="3" rx="2" fill="#52c41a"/>
+      <text x="12" y="22" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#52c41a">File saved</text>
+      <text x="12" y="40" font-family="monospace" font-size="10" fill="#ccc">Path: ~/uploads/screenshot.png</text>
+      <text x="12" y="56" font-family="monospace" font-size="10" fill="#888">Size: 245KB</text>
+    </g>
+
+    <!-- User sends same file again -->
+    <rect x="146" y="240" width="170" height="44" rx="14" fill="url(#ft-user-grad)"/>
+    <text x="168" y="258" font-size="16">📄</text>
+    <text x="188" y="258" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="white">screenshot.png</text>
+    <text x="188" y="274" font-family="system-ui, sans-serif" font-size="10" fill="rgba(255,255,255,0.7)">302 KB</text>
+
+    <!-- Bot reply: conflict warning -->
+    <g transform="translate(34, 296)">
+      <rect width="260" height="50" rx="12" fill="#252540" stroke="#f5a623" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="260" height="3" rx="2" fill="#f5a623"/>
+      <text x="12" y="22" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#f5a623">File already exists</text>
+      <text x="12" y="40" font-family="system-ui, sans-serif" font-size="10" fill="#ccc">Reply 1 to overwrite, 0 to cancel</text>
+    </g>
+
+    <!-- User replies 1 -->
+    <rect x="276" y="358" width="36" height="28" rx="14" fill="url(#ft-user-grad)"/>
+    <text x="294" y="376" text-anchor="middle" font-family="monospace" font-size="13" font-weight="700" fill="white">1</text>
+
+    <!-- Bot reply: overwritten -->
+    <g transform="translate(34, 396)">
+      <rect width="260" height="52" rx="12" fill="#252540" stroke="#52c41a" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="260" height="3" rx="2" fill="#52c41a"/>
+      <text x="12" y="22" font-family="system-ui, sans-serif" font-size="10" font-weight="600" fill="#52c41a">File saved (overwritten)</text>
+      <text x="12" y="40" font-family="monospace" font-size="10" fill="#ccc">Path: ~/uploads/screenshot.png</text>
+    </g>
+
+    <!-- Home indicator -->
+    <rect x="126" y="458" width="88" height="4" rx="2" fill="#444"/>
+  </g>
+
+  <!-- ═══════ RIGHT: Download (Server → Feishu) ═══════ -->
+
+  <g filter="url(#ft-shadow)">
+    <rect x="350" y="10" width="320" height="460" rx="32" fill="#1a1a2e" stroke="#333" stroke-width="2"/>
+
+    <!-- Status bar -->
+    <text x="382" y="38" font-family="system-ui, sans-serif" font-size="12" font-weight="600" fill="#888">9:42</text>
+    <text x="618" y="38" font-family="system-ui, sans-serif" font-size="11" fill="#888">99%</text>
+
+    <!-- Chat header -->
+    <rect x="366" y="48" width="288" height="40" rx="0" fill="#252540"/>
+    <circle cx="390" cy="68" r="14" fill="#4a9eff"/>
+    <text x="390" y="73" text-anchor="middle" font-family="system-ui, sans-serif" font-size="14" font-weight="700" fill="white">R</text>
+    <text x="412" y="64" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="white">Remote CLI</text>
+    <text x="412" y="78" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">Download</text>
+
+    <!-- User: !dl file -->
+    <rect x="460" y="100" width="196" height="30" rx="14" fill="url(#ft-user-grad)"/>
+    <text x="558" y="119" text-anchor="middle" font-family="monospace" font-size="11" fill="white">!dl ~/logs/app.log</text>
+
+    <!-- Bot: sends file message -->
+    <g transform="translate(374, 142)">
+      <rect width="240" height="56" rx="12" fill="#252540" stroke="#4a9eff" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="240" height="3" rx="2" fill="#4a9eff"/>
+      <text x="32" y="24" font-size="18">📄</text>
+      <text x="52" y="24" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="white">app.log</text>
+      <text x="52" y="42" font-family="system-ui, sans-serif" font-size="10" fill="#888">2.1 MB</text>
+      <rect x="170" y="14" width="56" height="22" rx="11" fill="#4a9eff" fill-opacity="0.15"/>
+      <text x="198" y="29" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#4a9eff">Download</text>
+    </g>
+
+    <!-- User: !dl image -->
+    <rect x="444" y="214" width="212" height="30" rx="14" fill="url(#ft-user-grad)"/>
+    <text x="550" y="233" text-anchor="middle" font-family="monospace" font-size="11" fill="white">!dl ~/uploads/demo.png</text>
+
+    <!-- Bot: sends image preview -->
+    <g transform="translate(374, 256)">
+      <rect width="200" height="80" rx="12" fill="#252540" stroke="#7c3aed" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="200" height="3" rx="2" fill="#7c3aed"/>
+      <rect x="8" y="10" width="184" height="62" rx="8" fill="#2a2a40"/>
+      <text x="100" y="36" text-anchor="middle" font-size="16">🖼️</text>
+      <text x="100" y="56" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#a78bfa">Image preview</text>
+    </g>
+
+    <!-- User: !dl directory -->
+    <rect x="466" y="350" width="190" height="30" rx="14" fill="url(#ft-user-grad)"/>
+    <text x="561" y="369" text-anchor="middle" font-family="monospace" font-size="11" fill="white">!dl ~/project/src</text>
+
+    <!-- Bot: packs and sends tar.gz -->
+    <g transform="translate(374, 392)">
+      <rect width="240" height="56" rx="12" fill="#252540" stroke="#52c41a" stroke-opacity="0.3" stroke-width="1"/>
+      <rect width="240" height="3" rx="2" fill="#52c41a"/>
+      <text x="32" y="24" font-size="18">📦</text>
+      <text x="52" y="24" font-family="system-ui, sans-serif" font-size="11" font-weight="600" fill="white">src.tar.gz</text>
+      <text x="52" y="42" font-family="system-ui, sans-serif" font-size="10" fill="#888">12.4 MB · auto-packed</text>
+      <rect x="170" y="14" width="56" height="22" rx="11" fill="#52c41a" fill-opacity="0.15"/>
+      <text x="198" y="29" text-anchor="middle" font-family="system-ui, sans-serif" font-size="9" fill="#52c41a">Download</text>
+    </g>
+
+    <!-- Home indicator -->
+    <rect x="466" y="458" width="88" height="4" rx="2" fill="#444"/>
+  </g>
+</svg>
