@@ -10,8 +10,8 @@ vi.mock('@larksuiteoapi/node-sdk', () => ({
         create: vi.fn(),
         patch: vi.fn(),
         reply: vi.fn(),
-        resources: vi.fn(),
       },
+      messageResource: { get: vi.fn() },
       messageReaction: { create: vi.fn(), delete: vi.fn() },
       file: { create: vi.fn() },
       image: { create: vi.fn() },
@@ -115,16 +115,16 @@ describe('FeishuBot file operations', () => {
     fs.rmSync(tmpDir, { recursive: true, force: true });
   });
 
-  it('downloadResource should call im.message.resources and write file', async () => {
+  it('downloadResource should call im.messageResource.get and write file', async () => {
     const mockWriteFile = vi.fn().mockResolvedValue(undefined);
-    (bot as any).client.im.message.resources = vi.fn().mockResolvedValue({
+    (bot as any).client.im.messageResource.get = vi.fn().mockResolvedValue({
       writeFile: mockWriteFile,
     });
 
     const destPath = path.join(tmpDir, 'test.pdf');
     await bot.downloadResource('msg_001', 'file_key_abc', 'file', destPath);
 
-    expect((bot as any).client.im.message.resources).toHaveBeenCalledWith({
+    expect((bot as any).client.im.messageResource.get).toHaveBeenCalledWith({
       path: { message_id: 'msg_001', file_key: 'file_key_abc' },
       params: { type: 'file' },
     });

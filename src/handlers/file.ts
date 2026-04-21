@@ -48,7 +48,7 @@ export async function handleFileUpload(
     return;
   }
 
-  await downloadAndSave(conversationId, messageId, fileKey, resourceType, destPath, fileName);
+  await downloadAndSave(conversationId, messageId, fileKey, resourceType, destPath);
 }
 
 export async function handleFileOverwriteResponse(
@@ -70,7 +70,6 @@ export async function handleFileOverwriteResponse(
       pending.fileKey,
       pending.resourceType,
       destPath,
-      pending.fileName,
     );
   } else {
     await feishuBot.sendText(conversationId, 'Upload cancelled.');
@@ -84,7 +83,6 @@ async function downloadAndSave(
   fileKey: string,
   resourceType: 'file' | 'image',
   destPath: string,
-  fileName: string,
 ): Promise<void> {
   const feishuBot = getFeishuBot();
   try {
@@ -160,9 +158,13 @@ export async function handleFileDownload(
         `File exceeds Feishu 30MB limit (current: ${formatSize(fileSize)})\nUse: scp ${os.userInfo().username}@${os.hostname()}:${resolvedPath} ./`,
       );
     }
-  } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    await feishuBot.sendText(conversationId, `Failed to send file: ${msg}`);
+  } catch (error: unknown) {
+    const axiosErr = error as any;
+    const code = axiosErr?.response?.data?.code;
+    const apiMsg = axiosErr?.response?.data?.msg;
+    const fallback = error instanceof Error ? error.message : String(error);
+    console.error('[FILE] Download error:', code, apiMsg, fallback);
+    await feishuBot.sendText(conversationId, `Failed to send file: ${apiMsg || fallback}`);
   } finally {
     if (tmpTar && fs.existsSync(tmpTar)) {
       fs.unlinkSync(tmpTar);

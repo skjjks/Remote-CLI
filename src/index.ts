@@ -224,6 +224,13 @@ async function main(): Promise<void> {
       if (message) {
         console.log(`[MSG] ${message.content.slice(0, 50)}`);
 
+        // Handle folder messages — not supported
+        if (message.messageType === 'folder') {
+          feishuBot.sendText(message.conversationId, 'Folder upload is not supported. Please send files individually or pack as zip/tar.gz first.')
+            .catch(err => console.error('[FILE] Folder reply error:', err));
+          return;
+        }
+
         // Handle file/image messages separately
         if (message.messageType === 'file' || message.messageType === 'image') {
           if (message.fileKey && message.fileName) {

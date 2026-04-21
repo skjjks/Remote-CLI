@@ -9,7 +9,7 @@ export interface FeishuMessage {
   conversationId: string;
   senderId: string;
   content: string;
-  messageType: 'text' | 'post' | 'interactive' | 'file' | 'image';
+  messageType: 'text' | 'post' | 'interactive' | 'file' | 'image' | 'folder';
   fileKey?: string;
   fileName?: string;
 }
@@ -116,6 +116,16 @@ export class FeishuBot {
             messageType,
             fileKey: parsed.image_key as string,
             fileName: 'image.png',
+          };
+        }
+
+        if (msgType === 'folder') {
+          return {
+            messageId: message.message_id as string,
+            conversationId: message.chat_id as string,
+            senderId,
+            content: '',
+            messageType: 'folder',
           };
         }
 
@@ -318,7 +328,7 @@ export class FeishuBot {
    * Download a file or image resource from a message
    */
   async downloadResource(messageId: string, fileKey: string, type: 'file' | 'image', destPath: string): Promise<void> {
-    const resp = await (this.client.im.message as any).resources({
+    const resp = await this.client.im.messageResource.get({
       path: { message_id: messageId, file_key: fileKey },
       params: { type },
     });
@@ -336,8 +346,16 @@ export class FeishuBot {
         file: fs.readFileSync(filePath),
       },
     });
-    const data = (resp as any)?.data;
-    return data?.file_key as string;
+    const res = resp as Record<string, unknown>;
+    if (res?.code && res.code !== 0) {
+      throw new Error(`Upload failed: ${res.code} ${res.msg}`);
+    }
+    const resData = res?.data as Record<string, unknown> | undefined;
+    const fileKey = (resData?.file_key ?? res?.file_key) as string | undefined;
+    if (!fileKey) {
+      throw new Error(`Upload returned no file_key: ${JSON.stringify(res)}`);
+    }
+    return fileKey;
   }
 
   /**
@@ -350,14 +368,22 @@ export class FeishuBot {
         image: fs.readFileSync(filePath),
       },
     });
-    const data = (resp as any)?.data;
-    return data?.image_key as string;
+    const res = resp as Record<string, unknown>;
+    if (res?.code && res.code !== 0) {
+      throw new Error(`Image upload failed: ${res.code} ${res.msg}`);
+    }
+    const resData = res?.data as Record<string, unknown> | undefined;
+    const imageKey = (resData?.image_key ?? res?.image_key) as string | undefined;
+    if (!imageKey) {
+      throw new Error(`Image upload returned no image_key: ${JSON.stringify(res)}`);
+    }
+    return imageKey;
   }
 
   /**
    * Send a file message to a conversation
    */
-  async sendFileMessage(conversationId: string, fileKey: string, fileName: string): Promise<void> {
+  async sendFileMessage(conversationId: string, fileKey: string, _fileName: string): Promise<void> {
     await this.client.im.message.create({
       params: { receive_id_type: 'chat_id' },
       data: {
