@@ -4,6 +4,13 @@ import { getSessionManager, SessionInfo } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
 import { isInteractiveProgram } from '../terminal/interactive';
 import { activeSessions, smartCard, addToHistory } from '../state';
+import { parseAnsi } from '../terminal/ansi-parser';
+import { registerFonts } from '../terminal/fonts';
+import { renderScreenshot } from '../terminal/screenshot';
+import * as os from 'os';
+import * as fs from 'fs';
+
+registerFonts();
 
 // ── Helpers ──
 
@@ -299,12 +306,39 @@ export async function handleScreen(conversationId: string): Promise<void> {
   }
 
   try {
-    const captured = await tmux.capturePane(session.tmuxName);
-    const card = smartCard.buildTerminalOutputCard(captured, { sessionId: activeSessionId });
-    await feishuBot.sendCard(conversationId, card);
+    const captured = await tmux.capturePaneAnsi(session.tmuxName);
+    const panePath = await tmux.getCurrentPath(session.tmuxName);
+    const hostname = os.hostname();
+    const user = process.env.USER ?? 'user';
+    const home = process.env.HOME ?? '';
+    const displayPath = panePath.startsWith(home) ? '~' + panePath.slice(home.length) : panePath;
+    const title = `${user}@${hostname}: ${displayPath}`;
+
+    const rawLines = captured.split('\n');
+    const parsedLines = rawLines.map((line) => parseAnsi(line));
+
+    const config = getConfig();
+    const png = await renderScreenshot(parsedLines, title, { cols: config.terminal.cols });
+
+    const tmpPath = `/tmp/screenshot-${Date.now()}.png`;
+    fs.writeFileSync(tmpPath, png);
+
+    try {
+      const imageKey = await feishuBot.uploadImage(tmpPath);
+      await feishuBot.sendImageMessage(conversationId, imageKey);
+    } finally {
+      fs.unlinkSync(tmpPath);
+    }
   } catch (err) {
-    console.error('[TERMINAL] Failed to capture screen:', err);
-    await feishuBot.sendText(conversationId, 'Failed to capture screen');
+    console.error('[TERMINAL] Screenshot failed, falling back to text card:', err);
+    try {
+      const captured = await tmux.capturePane(session.tmuxName);
+      const card = smartCard.buildTerminalOutputCard(captured, { sessionId: activeSessionId });
+      await feishuBot.sendCard(conversationId, card);
+    } catch (fallbackErr) {
+      console.error('[TERMINAL] Fallback also failed:', fallbackErr);
+      await feishuBot.sendText(conversationId, 'Failed to capture screen');
+    }
   }
 }
 
