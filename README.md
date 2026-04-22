@@ -6,7 +6,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/Tests-234%20passed-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](#)
+[![Tests](https://img.shields.io/badge/Tests-265%20passed-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](#)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 **在飞书里远程控制服务器、与 AI 编码助手对话、传输文件、一键连接工程云**
@@ -171,8 +171,9 @@ Bot：Packing directory...
 | ⌨️ 命令执行 | `!sh <command>` 执行任意 shell 命令 |
 | 🖱️ 交互式程序 | 自动检测 vim / htop / nano，切换原始输入模式 |
 | ⌨️ 快捷键 | `!esc` `!enter` `!tab` `!ctrl+c` 等 |
-| 📺 终端画面 | `!screen` 随时查看当前终端状态 |
+| 📺 终端截图 | `!screen` 截取终端画面为 PNG 图片，保留颜色和对齐 |
 | 🎨 输出优化 | ANSI 清理、语法高亮、错误标红、短输出优化 |
+| 🔤 CJK 支持 | 自动检测系统字体，逐字符 fallback 渲染中文和特殊符号 |
 
 <br/>
 
@@ -379,7 +380,7 @@ npm run deploy
 | 命令 | 说明 |
 |:-----|:-----|
 | `!sh <cmd>` | 执行 shell 命令 |
-| `!screen` / `!sc` | 查看终端屏幕 |
+| `!screen` / `!sc` | 终端截图（PNG 图片） |
 | `!key <key>` | 发送特殊键 |
 | `!esc` `!enter` `!tab` | 快捷键 |
 | `!ctrl+c` `!ctrl+d` | Ctrl 组合键 |
@@ -453,7 +454,8 @@ graph TB
 | 消息路由 | `src/index.ts` | 飞书消息分发、命令解析 |
 | AI 驱动 | `src/ai/drivers/` | Claude SDK / opencode SDK 适配 |
 | AI 管理 | `src/ai/manager.ts` | 统一接口、会话生命周期 |
-| 终端处理 | `src/handlers/terminal.ts` | shell 命令、交互检测、快捷键 |
+| 终端处理 | `src/handlers/terminal.ts` | shell 命令、交互检测、快捷键、终端截图 |
+| 终端截图 | `src/terminal/screenshot.ts` | ANSI 解析、字体管理、Canvas 渲染 PNG |
 | 卡片构建 | `src/bot/card.ts` | 飞书卡片模板、ANSI 清理、语法高亮 |
 | 飞书客户端 | `src/bot/feishu.ts` | API 封装、WebSocket 消息收发 |
 | 会话持久化 | `src/terminal/session.ts` | 会话存储、重连、24h 自动清理 |
@@ -512,7 +514,7 @@ pm2 startup && pm2 save
 ## 🛠️ 开发
 
 ```bash
-npm test              # 运行测试 (234 tests)
+npm test              # 运行测试 (265 tests)
 npm run test:watch    # 监听模式
 npm run lint          # 代码检查
 npm run build         # 构建
@@ -549,6 +551,9 @@ src/
     tmux.ts                 # tmux 封装
     session.ts              # 会话持久化
     interactive.ts          # 交互式程序检测
+    ansi-parser.ts          # ANSI SGR 转义码解析
+    fonts.ts                # 系统字体检测与逐字符路由
+    screenshot.ts           # 终端截图渲染 (Canvas → PNG)
 ```
 
 </details>
