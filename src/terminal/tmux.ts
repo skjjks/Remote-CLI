@@ -183,3 +183,20 @@ export async function capturePaneVisible(name: string): Promise<string> {
   const args = ['capture-pane', '-t', name, '-p'];
   return executeTmux(args);
 }
+
+/**
+ * Capture visible pane output with ANSI escape codes preserved.
+ * Used by screenshot renderer to maintain colors and styles.
+ */
+export async function capturePaneAnsi(name: string): Promise<string> {
+  const args = ['capture-pane', '-t', name, '-p', '-e'];
+  return executeTmux(args);
+}
+
+/**
+ * Get the current working directory of a tmux pane.
+ */
+export async function getCurrentPath(name: string): Promise<string> {
+  const result = await executeTmux(['display-message', '-p', '-t', name, '#{pane_current_path}']);
+  return result.trim();
+}

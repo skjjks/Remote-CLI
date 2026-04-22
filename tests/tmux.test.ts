@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { spawn } from 'child_process';
+import * as tmux from '../src/terminal/tmux';
 import {
   createSession,
   attachSession,
@@ -358,6 +359,18 @@ describe('tmux', () => {
       call?.[1](1);
 
       await expect(promise).rejects.toThrow('tmux exited with code 1');
+    });
+  });
+
+  describe('capturePaneAnsi', () => {
+    test('function exists', () => {
+      expect(typeof tmux.capturePaneAnsi).toBe('function');
+    });
+  });
+
+  describe('getCurrentPath', () => {
+    test('function exists', () => {
+      expect(typeof tmux.getCurrentPath).toBe('function');
     });
   });
 });
