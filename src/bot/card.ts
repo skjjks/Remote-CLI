@@ -37,16 +37,29 @@ export interface FeishuCardV2Schema20 {
   };
 }
 
+type FeishuCardV2Button = {
+  tag: 'button';
+  text: { tag: 'plain_text'; content: string };
+  type: 'primary' | 'danger' | 'default';
+  behaviors: Array<{ type: 'callback'; value: CardActionValue }>;
+  width?: 'default' | 'fill';
+};
+
 type FeishuCardV2Schema20Element =
   | { tag: 'markdown'; content: string }
   | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> }
+  | FeishuCardV2Button
   | {
-      tag: 'action';
-      actions: Array<{
-        tag: 'button';
-        text: { tag: 'plain_text'; content: string };
-        type: 'primary' | 'danger' | 'default';
-        behaviors: Array<{ type: 'callback'; value: CardActionValue }>;
+      // Schema 2.0 no longer supports `tag: 'action'`. Buttons live directly in
+      // `elements`; use `column_set` to lay them out horizontally.
+      tag: 'column_set';
+      flex_mode: 'flow' | 'none' | 'bisect' | 'trisect';
+      columns: Array<{
+        tag: 'column';
+        width: 'auto' | 'weighted';
+        weight?: number;
+        vertical_align?: 'top' | 'center' | 'bottom';
+        elements: FeishuCardV2Schema20Element[];
       }>;
     };
 
@@ -671,12 +684,20 @@ export class SmartCardBuilder {
         elements: [
           { tag: 'markdown', content: opts.bodyMarkdown },
           {
-            tag: 'action',
-            actions: opts.buttons.map(b => ({
-              tag: 'button',
-              text: { tag: 'plain_text', content: b.label },
-              type: b.variant,
-              behaviors: [{ type: 'callback', value: b.value }],
+            tag: 'column_set',
+            flex_mode: 'flow',
+            columns: opts.buttons.map(b => ({
+              tag: 'column' as const,
+              width: 'weighted' as const,
+              weight: 1,
+              vertical_align: 'top' as const,
+              elements: [{
+                tag: 'button' as const,
+                text: { tag: 'plain_text' as const, content: b.label },
+                type: b.variant,
+                width: 'fill' as const,
+                behaviors: [{ type: 'callback' as const, value: b.value }],
+              }],
             })),
           },
         ],

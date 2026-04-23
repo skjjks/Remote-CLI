@@ -36,10 +36,11 @@ describe('buildConfirmCardV2', () => {
       },
     });
     expect(card.body.elements[0]).toMatchObject({ tag: 'markdown' });
-    const actions = card.body.elements[1] as any;
-    expect(actions.tag).toBe('action');
-    expect(actions.actions).toHaveLength(3);
-    expect(actions.actions[0]).toMatchObject({
+    const columnSet = card.body.elements[1] as any;
+    expect(columnSet.tag).toBe('column_set');
+    expect(columnSet.columns).toHaveLength(3);
+    const firstButton = columnSet.columns[0].elements[0];
+    expect(firstButton).toMatchObject({
       tag: 'button',
       text: { tag: 'plain_text', content: '✓ Allow' },
       type: 'primary',
@@ -53,8 +54,8 @@ describe('buildConfirmCardV2', () => {
         },
       }],
     });
-    expect(actions.actions[1].type).toBe('danger');
-    expect(actions.actions[2].type).toBe('default');
+    expect(columnSet.columns[1].elements[0].type).toBe('danger');
+    expect(columnSet.columns[2].elements[0].type).toBe('default');
   });
 });
 
@@ -75,6 +76,7 @@ describe('buildResolvedCardV2', () => {
       tag: 'note',
       elements: [{ tag: 'plain_text', content: '✓ Allowed by @demo' }],
     });
-    expect(card.body.elements.some(e => e.tag === 'action')).toBe(false);
+    expect(card.body.elements.some(e => e.tag === 'column_set')).toBe(false);
+    expect(card.body.elements.some(e => e.tag === 'button')).toBe(false);
   });
 });
