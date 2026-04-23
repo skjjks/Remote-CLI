@@ -1,5 +1,5 @@
 import type { AIMetadata, AIManagerCallbacks } from './manager';
-import { pendingRequests } from '../state';
+import { pendingRequests, lastRequester } from '../state';
 
 /**
  * Input for building AI metadata — shared across all drivers.
@@ -108,6 +108,7 @@ export function createPendingRequest(
     },
     conversationId,
     timer,
+    requesterOpenId: lastRequester.get(conversationId),
   });
 
   return requestId;

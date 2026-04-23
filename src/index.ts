@@ -4,7 +4,7 @@ import { getFeishuBot } from './bot/feishu';
 import { getSessionManager, type SessionInfo } from './terminal/session';
 import * as tmux from './terminal/tmux';
 import { getShortcutKey } from './terminal/interactive';
-import { activeSessions, pendingPrompts, pendingFileUploads, COMMAND_PREFIX, smartCard } from './state';
+import { activeSessions, pendingPrompts, pendingFileUploads, lastRequester, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
 import { handleCloudCommand, forwardToClouddev } from './handlers/clouddev';
@@ -221,6 +221,9 @@ async function main(): Promise<void> {
   eventDispatcher.register({
     'im.message.receive_v1': async (data: unknown) => {
       const message = feishuBot.parseMessage(data);
+      if (message && message.senderId && message.conversationId) {
+        lastRequester.set(message.conversationId, message.senderId);
+      }
       if (message) {
         console.log(`[MSG] ${message.content.slice(0, 50)}`);
 

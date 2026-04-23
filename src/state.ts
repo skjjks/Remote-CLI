@@ -81,6 +81,13 @@ export function addToHistory(conversationId: string, command: string): void {
 /** Per-conversation model override. Key: conversationId, Value: model string */
 export const modelOverrides: Map<string, string> = new Map();
 
+/**
+ * Last user who sent a message in each conversation. Key: conversationId, Value: Feishu open_id.
+ * Used by card-action callbacks to restrict who can resolve a permission request to the original requester.
+ * Updated on every inbound message in src/index.ts.
+ */
+export const lastRequester: Map<string, string> = new Map();
+
 export const COMMAND_PREFIX = '!';
 
 export const smartCard = new SmartCardBuilder();
