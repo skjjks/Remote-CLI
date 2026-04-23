@@ -7,6 +7,7 @@ import type {
 import { pendingRequests, smartCard } from '../state';
 import { resolvePendingRequestById } from '../ai/shared';
 import { getFeishuBot } from '../bot/feishu';
+import { handleFileOverwriteResponse } from './file';
 
 const registry = new Map<string, CardActionHandler>();
 
@@ -108,6 +109,38 @@ registerCardActionHandler('permission', async (value, ctx): Promise<CardActionRe
     toast: {
       type: value.choice === 'deny' ? 'info' : 'success',
       content: statusText,
+    } as const,
+  };
+});
+
+registerCardActionHandler('fileOverwrite', async (value, ctx): Promise<CardActionResult> => {
+  if (value.kind !== 'fileOverwrite') {
+    return { toast: { type: 'error', content: 'Unknown action' } as const };
+  }
+  if (value.requesterOpenId && value.requesterOpenId !== ctx.openId) {
+    return { toast: { type: 'warning', content: 'Only the uploader can answer this' } as const };
+  }
+
+  const digit = value.choice === 'overwrite' ? '1' : '0';
+  const ok = await handleFileOverwriteResponse(value.conversationId, digit);
+  if (!ok) {
+    return { toast: { type: 'warning', content: 'Request expired' } as const };
+  }
+
+  if (ctx.messageId) {
+    const resolvedCard = smartCard.buildResolvedCardV2({
+      title: '📁 File already exists',
+      bodyMarkdown: '',
+      statusText: value.choice === 'overwrite' ? '✓ Overwriting…' : '✗ Upload cancelled',
+      statusColor: value.choice === 'overwrite' ? 'green' : 'red',
+    });
+    await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
+  }
+
+  return {
+    toast: {
+      type: 'success',
+      content: value.choice === 'overwrite' ? 'Overwriting' : 'Cancelled',
     } as const,
   };
 });
