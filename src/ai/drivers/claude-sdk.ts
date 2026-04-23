@@ -98,6 +98,9 @@ export class ClaudeSDKDriver implements AISessionDriver {
     const sdkOptions: Partial<SDKOptions> = {
       allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Skill', 'Agent', 'WebFetch', 'NotebookEdit', 'TodoRead', 'TodoWrite'],
       settingSources: ['project' as any],  // Load .claude/skills, CLAUDE.md, slash commands
+      // Adaptive thinking (Opus 4.6+): Claude decides when/how much to think.
+      // Upstream Bedrock-backed proxy rejects the legacy `{type:'enabled'}` format.
+      thinking: { type: 'adaptive' } as any,
     };
 
     // Apply model: override > env default > opus
