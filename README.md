@@ -175,6 +175,14 @@ Bot：Packing directory...
 | 🎨 输出优化 | ANSI 清理、语法高亮、错误标红、短输出优化 |
 | 🔤 CJK 支持 | 自动检测系统字体，逐字符 fallback 渲染中文和特殊符号 |
 
+<div align="center">
+
+<img src="docs/images/screen-demo.png" alt="!screen 真实截图 — git log 多分支彩色图表" width="720"/>
+
+<sub><code>!screen</code> 把终端画面渲染成 PNG —— 颜色、对齐、CJK 一个不丢</sub>
+
+</div>
+
 <br/>
 
 ### ☁️ 工程云连接

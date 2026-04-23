@@ -46,3 +46,9 @@ docs/*
 
 # Graphify knowledge graph output
 graphify-out/
+
+# Sisyphus local state (specs, run continuations)
+.sisyphus/
+
+# One-off local scripts (not part of build output)
+scripts/
