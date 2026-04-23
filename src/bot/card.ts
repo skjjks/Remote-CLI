@@ -3,6 +3,7 @@
  * Builds dynamically-partitioned Feishu cards for Claude events and terminal output.
  */
 
+import type { CardActionValue } from './card-action-types';
 
 // ── Feishu Card V2 types (markdown-based) ──
 
@@ -21,6 +22,33 @@ type FeishuCardElement =
   | { tag: 'action'; actions: CardButton[] }
   | { tag: 'div'; text: { tag: 'plain_text'; content: string } }
   | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> };
+
+// ── Feishu Card V2 types (schema 2.0 — interactive cards) ──
+
+export interface FeishuCardV2Schema20 {
+  schema: '2.0';
+  config: { update_multi: boolean };
+  header: {
+    title: { tag: 'plain_text'; content: string };
+    template: string;
+  };
+  body: {
+    elements: FeishuCardV2Schema20Element[];
+  };
+}
+
+type FeishuCardV2Schema20Element =
+  | { tag: 'markdown'; content: string }
+  | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> }
+  | {
+      tag: 'action';
+      actions: Array<{
+        tag: 'button';
+        text: { tag: 'plain_text'; content: string };
+        type: 'primary' | 'danger' | 'default';
+        behaviors: Array<{ type: 'callback'; value: CardActionValue }>;
+      }>;
+    };
 
 // ── Legacy V1 types (kept for backward compatibility) ──
 
@@ -615,6 +643,68 @@ export class SmartCardBuilder {
     return this.card('Error', 'red', [
       { tag: 'markdown', content: `\`\`\`\n${error}\n\`\`\`` },
     ]);
+  }
+
+  /**
+   * Schema 2.0 confirmation card with callback buttons.
+   * Separate from legacy `buildMenuCard`/`card()` helpers so existing
+   * non-interactive flows stay on schema 1.0.
+   */
+   buildConfirmCardV2(opts: {
+     title: string;
+     headerTemplate?: 'blue' | 'orange' | 'red' | 'green';
+     bodyMarkdown: string;
+     buttons: Array<{
+       label: string;
+       variant: 'primary' | 'danger' | 'default';
+       value: CardActionValue;
+     }>;
+   }): FeishuCardV2Schema20 {
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: opts.title },
+        template: opts.headerTemplate ?? 'orange',
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: opts.bodyMarkdown },
+          {
+            tag: 'action',
+            actions: opts.buttons.map(b => ({
+              tag: 'button',
+              text: { tag: 'plain_text', content: b.label },
+              type: b.variant,
+              behaviors: [{ type: 'callback', value: b.value }],
+            })),
+          },
+        ],
+      },
+    };
+  }
+
+  /** Schema 2.0 read-only card used to replace a confirm card after resolution. */
+   buildResolvedCardV2(opts: {
+     title: string;
+     bodyMarkdown: string;
+     statusText: string;
+     statusColor: 'green' | 'red' | 'grey';
+   }): FeishuCardV2Schema20 {
+     return {
+       schema: '2.0',
+       config: { update_multi: true },
+       header: {
+         title: { tag: 'plain_text', content: opts.title },
+         template: opts.statusColor,
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: opts.bodyMarkdown },
+          { tag: 'note', elements: [{ tag: 'plain_text', content: opts.statusText }] },
+        ],
+      },
+    };
   }
 }
 
