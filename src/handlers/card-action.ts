@@ -4,6 +4,9 @@ import type {
   CardActionResult,
   CardActionValue,
 } from '../bot/card-action-types';
+import { pendingRequests, smartCard } from '../state';
+import { resolvePendingRequestById } from '../ai/shared';
+import { getFeishuBot } from '../bot/feishu';
 
 const registry = new Map<string, CardActionHandler>();
 
@@ -56,3 +59,55 @@ export async function handleCardAction(data: unknown): Promise<CardActionResult>
     return { toast: { type: 'error', content: 'Action failed' } as const };
   }
 }
+
+registerCardActionHandler('permission', async (value, ctx): Promise<CardActionResult> => {
+  if (value.kind !== 'permission') {
+    return { toast: { type: 'error', content: 'Unknown action' } as const };
+  }
+  const entry = pendingRequests.get(value.requestId);
+  if (!entry) {
+    return { toast: { type: 'warning', content: 'Request expired' } as const };
+  }
+  if (entry.requesterOpenId && entry.requesterOpenId !== ctx.openId) {
+    return { toast: { type: 'warning', content: 'Only the requester can answer this' } as const };
+  }
+
+  let resolved: unknown;
+  switch (value.choice) {
+    case 'allow':
+      resolved = { behavior: 'allow' };
+      break;
+    case 'deny':
+      resolved = { behavior: 'deny', message: 'Denied by user' };
+      break;
+    case 'allow_always':
+      resolved = { behavior: 'allow', updatedPermissions: [{ type: 'allow_always' }] };
+      break;
+  }
+  resolvePendingRequestById(value.requestId, resolved);
+
+  const statusText =
+    value.choice === 'allow'
+      ? '✓ Allowed'
+      : value.choice === 'allow_always'
+        ? '✓✓ Allowed (Always)'
+        : '✗ Denied';
+  const statusColor: 'green' | 'red' = value.choice === 'deny' ? 'red' : 'green';
+
+  if (ctx.messageId) {
+    const resolvedCard = smartCard.buildResolvedCardV2({
+      title: 'Permission request',
+      bodyMarkdown: '',
+      statusText,
+      statusColor,
+    });
+    await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
+  }
+
+  return {
+    toast: {
+      type: value.choice === 'deny' ? 'info' : 'success',
+      content: statusText,
+    } as const,
+  };
+});
