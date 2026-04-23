@@ -97,7 +97,7 @@ opencode：正在分析...
 | 🔄 双后端切换 | `!claude` / `!opencode` 随时切换 |
 | 🎯 模型热切 | `!model sonnet` — 支持 opus / sonnet / haiku / gemini / gpt 等 |
 | ⚡ 流式输出 | AI 回复实时更新飞书卡片，不用等完整响应 |
-| 🛡️ 工具权限 | Claude 使用工具前弹出权限卡片——点 ✓ Allow / ✗ Deny 按钮，或继续输入数字 |
+| 🛡️ 工具权限 | Claude 使用工具前弹出权限卡片——点 ✓ Allow / ✗ Deny 按钮，或继续输入数字。项目 `.claude/settings.local.json` 里 `permissions.allow` 白名单命中的命令会直接执行（SDK 行为） |
 | 💾 会话恢复 | Bot 重启后自动恢复上次 AI 对话上下文 |
 | 🔘 交互按钮 | 权限确认、文件覆盖等场景支持点按钮；老的「输入数字」方式依然保留 |
 
