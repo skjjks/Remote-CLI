@@ -32,6 +32,10 @@ export interface PendingRequest {
   conversationId: string;
   /** Auto-deny timer handle so we can clear it on resolution. */
   timer: ReturnType<typeof setTimeout>;
+  /** Feishu open_id of the user who triggered this request — used by card callbacks to gate clicks. */
+  requesterOpenId?: string;
+  /** Feishu message_id of the card that displayed this request — used to update the card after resolution. */
+  messageId?: string;
 }
 
 /**

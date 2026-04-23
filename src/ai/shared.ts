@@ -148,3 +148,18 @@ export function resolvePendingInput(conversationId: string, input: string): bool
 
   return true;
 }
+
+/**
+ * Resolve a pending request by its ID (the key in `pendingRequests`).
+ * Used by card action callbacks — text-digit input continues to flow through
+ * `resolvePendingInput`.
+ *
+ * Returns true if the id was found and resolved, false otherwise.
+ */
+export function resolvePendingRequestById(requestId: string, resolvedValue: unknown): boolean {
+  const entry = pendingRequests.get(requestId);
+  if (!entry) return false;
+  pendingRequests.delete(requestId);
+  entry.resolve(resolvedValue);
+  return true;
+}
