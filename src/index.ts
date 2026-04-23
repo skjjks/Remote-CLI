@@ -259,11 +259,16 @@ async function main(): Promise<void> {
         doWork().catch(err => console.error('[MSG] Error:', err));
       }
     },
+    'card.action.trigger': async (data: unknown) => {
+      const { handleCardAction } = await import('./handlers/card-action');
+      return handleCardAction(data);
+    },
   });
 
   // Create WebSocket client
-  // Note: Card action callbacks (button clicks) are NOT supported in WebSocket mode.
-  // Users interact by typing numbers/text instead of clicking buttons.
+  // Card action callbacks (card.action.trigger) ARE supported in WebSocket mode
+  // for the new schema-2.0 card format. The event is registered on eventDispatcher
+  // above. Legacy schema-1.0 card callbacks (card.action.trigger_v1) are not.
   const wsClient = new lark.WSClient({
     appId: config.feishu.appId,
     appSecret: config.feishu.appSecret,
