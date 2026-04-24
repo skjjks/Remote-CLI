@@ -1,56 +1,46 @@
 /**
- * Unified model shortcuts for all AI backends.
- * Single source of truth — handlers and drivers import from here.
+ * Thin façade over src/ai/model-discovery.ts.
  *
- * Claude shortcuts are resolved LAZILY (per call) because
- * ANTHROPIC_DEFAULT_*_MODEL env vars are patched from ~/.claude/settings.json
- * at first AI call (via ensureClaudeEnv) — after this module's import time.
- * Evaluating them at module-load would freeze in the pre-patch fallback.
+ * The real model lists come from the user's CLI configs:
+ * - Claude:   process.env.ANTHROPIC_DEFAULT_{OPUS,SONNET,HAIKU}_MODEL
+ *             (patched early from ~/.claude/settings.json by ensureClaudeEnv)
+ * - Opencode: ~/.config/opencode/opencode.json provider[*].models
+ *
+ * If discovery returns empty (missing/broken configs), a tiny static fallback
+ * keeps the bot usable.
  */
 
-// Claude shortcut resolvers — read env at call time, not at module-load time.
-function claudeShortcuts(): Record<string, string> {
-  return {
-    opus: process.env.ANTHROPIC_DEFAULT_OPUS_MODEL || 'claude-opus-4-6',
-    sonnet: process.env.ANTHROPIC_DEFAULT_SONNET_MODEL || 'claude-sonnet-4-6',
-    haiku: process.env.ANTHROPIC_DEFAULT_HAIKU_MODEL || 'claude-haiku-4-5-20251001',
-  };
-}
+import { discoverClaudeModels, discoverOpencodeModels, type DiscoveredModel } from './model-discovery';
 
-const OPENCODE_SHORTCUTS: Record<string, string> = {
-  opus: 'Mify-Anthropic/ppio/pa/claude-opus-4-6',
-  sonnet: 'google/antigravity-claude-sonnet-4-6',
-  'opus-think': 'google/antigravity-claude-opus-4-6-thinking',
-  gpt5: 'Mify-OpenAI/azure_openai/gpt-5.1-codex',
-  kimi: 'Mify-Kimi/volcengine_maas/kimi-k2-250711',
-  gemini: 'google/gemini-3-pro-preview',
-  'gemini-flash': 'google/gemini-3-flash-preview',
-  mimo: 'Mify-Xiaomi/xiaomi/mimo-v2-flash',
-};
+// Static fallback — intentionally tiny; not intended to stay in sync with
+// upstream reality. Reached only when the user has zero configured models.
+const CLAUDE_FALLBACK: DiscoveredModel[] = [
+  { shortcut: 'opus', model: 'claude-opus-4-6' },
+  { shortcut: 'sonnet', model: 'claude-sonnet-4-6' },
+  { shortcut: 'haiku', model: 'claude-haiku-4-5-20251001' },
+];
 
-interface PopularModel {
-  shortcut: string;
-  model: string;
-  desc?: string;
+const OPENCODE_FALLBACK: DiscoveredModel[] = [
+  { shortcut: 'opus', model: 'Mify-Anthropic/ppio/pa/claude-opus-4-6', group: 'Mify-Anthropic' },
+];
+
+export type PopularModel = DiscoveredModel;
+
+export function getPopularModels(backend: 'claude' | 'opencode'): PopularModel[] {
+  const discovered = backend === 'claude' ? discoverClaudeModels() : discoverOpencodeModels();
+  if (discovered.length > 0) return discovered;
+  return backend === 'claude' ? CLAUDE_FALLBACK : OPENCODE_FALLBACK;
 }
 
 export function getModelShortcuts(backend: 'claude' | 'opencode'): Record<string, string> {
-  return backend === 'opencode' ? OPENCODE_SHORTCUTS : claudeShortcuts();
+  const out: Record<string, string> = {};
+  for (const m of getPopularModels(backend)) {
+    out[m.shortcut.toLowerCase()] = m.model;
+  }
+  return out;
 }
 
 export function resolveModel(backend: 'claude' | 'opencode', input: string): string {
   const shortcuts = getModelShortcuts(backend);
   return shortcuts[input.toLowerCase()] || input;
-}
-
-export function getPopularModels(backend: 'claude' | 'opencode'): PopularModel[] {
-  if (backend === 'opencode') {
-    return Object.entries(OPENCODE_SHORTCUTS).map(([shortcut, model]) => ({ shortcut, model }));
-  }
-  const s = claudeShortcuts();
-  return [
-    { shortcut: 'opus', model: s.opus, desc: 'Most capable' },
-    { shortcut: 'sonnet', model: s.sonnet, desc: 'Balanced' },
-    { shortcut: 'haiku', model: s.haiku, desc: 'Fast & cheap' },
-  ];
 }
