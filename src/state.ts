@@ -32,6 +32,10 @@ export interface PendingRequest {
   conversationId: string;
   /** Auto-deny timer handle so we can clear it on resolution. */
   timer: ReturnType<typeof setTimeout>;
+  /** Feishu open_id of the user who triggered this request — used by card callbacks to gate clicks. */
+  requesterOpenId?: string;
+  /** Feishu message_id of the card that displayed this request — used to update the card after resolution. */
+  messageId?: string;
 }
 
 /**
@@ -76,6 +80,13 @@ export function addToHistory(conversationId: string, command: string): void {
 
 /** Per-conversation model override. Key: conversationId, Value: model string */
 export const modelOverrides: Map<string, string> = new Map();
+
+/**
+ * Last user who sent a message in each conversation. Key: conversationId, Value: Feishu open_id.
+ * Used by card-action callbacks to restrict who can resolve a permission request to the original requester.
+ * Updated on every inbound message in src/index.ts.
+ */
+export const lastRequester: Map<string, string> = new Map();
 
 export const COMMAND_PREFIX = '!';
 

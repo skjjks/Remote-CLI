@@ -1,7 +1,7 @@
 import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
-import { activeSessions, commandHistory, modelOverrides } from '../state';
+import { activeSessions, commandHistory, modelOverrides, lastRequester, smartCard } from '../state';
 import { getClaudeManager, getOpencodeManager } from './ai';
 import { getModelShortcuts, resolveModel, getPopularModels } from '../ai/models';
 
@@ -29,34 +29,45 @@ export async function handleNewSession(conversationId: string, backend?: string)
   await feishuBot.sendText(conversationId, `Created ${label} session ${session.id}`);
 }
 
-export async function handleListSessions(conversationId: string): Promise<void> {
+function relativeTime(createdIso: string): string {
+  const then = new Date(createdIso).getTime();
+  const diffMs = Math.max(0, Date.now() - then);
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+async function sendSessionMenuCard(conversationId: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
-  // Only show sessions belonging to this conversation
   const sessions = sessionManager.getSessions().filter(s => s.conversationId === conversationId);
-
-  if (sessions.length === 0) {
-    await feishuBot.sendText(conversationId, 'No active sessions');
-    return;
-  }
-
   const activeSessionId = activeSessions.get(conversationId);
-  const lines = sessions.map(s => {
-    const active = s.id === activeSessionId ? ' *' : '';
-    const sid = (s.type === 'claude' || s.type === 'opencode') && s.sdkSessionId
-      ? ` (${s.sdkSessionId})`
-      : '';
-    return `  ${s.id}: [${s.type}]${sid} created ${s.created}${active}`;
+  const requesterOpenId = lastRequester.get(conversationId) ?? '';
+  const card = smartCard.buildSessionMenuCardV2({
+    activeSessionId,
+    sessions: sessions.map(s => ({
+      id: s.id,
+      type: s.type,
+      createdDisplay: relativeTime(s.created),
+    })),
+    requesterOpenId,
   });
+  await feishuBot.sendCard(conversationId, card);
+}
 
-  await feishuBot.sendText(conversationId, `Sessions:\n${lines.join('\n')}`);
+export async function handleListSessions(conversationId: string): Promise<void> {
+  await sendSessionMenuCard(conversationId);
 }
 
 export async function handleSwitchSession(conversationId: string, idStr?: string): Promise<void> {
   const feishuBot = getFeishuBot();
 
   if (!idStr) {
-    await feishuBot.sendText(conversationId, 'Usage: !switch <session_id>');
+    await sendSessionMenuCard(conversationId);
     return;
   }
 
@@ -225,20 +236,15 @@ export async function handleModel(conversationId: string, model?: string): Promi
 
   if (!model || model === 'list') {
     const current = modelOverrides.get(conversationId);
-    const lines: string[] = [
-      current ? `Current: **${current}**` : 'Current: default (no override)',
-      '',
-    ];
-
-    const label = isOpencode ? 'Opencode' : 'Claude';
-    lines.push(`**${label} models:**`);
-    for (const m of getPopularModels(isOpencode ? 'opencode' : 'claude')) {
-      const suffix = m.desc ? ` (${m.desc})` : '';
-      lines.push(`  \`!model ${m.shortcut}\` → ${m.model}${suffix}`);
-    }
-
-    lines.push('', 'Or use full model name directly', '`!model reset` to clear override');
-    await feishuBot.sendText(conversationId, lines.join('\n'));
+    const requesterOpenId = lastRequester.get(conversationId) ?? '';
+    const backend = isOpencode ? 'opencode' as const : 'claude' as const;
+    const card = smartCard.buildModelMenuCardV2({
+      currentModel: current,
+      backend,
+      models: getPopularModels(backend),
+      requesterOpenId,
+    });
+    await feishuBot.sendCard(conversationId, card);
     return;
   }
 

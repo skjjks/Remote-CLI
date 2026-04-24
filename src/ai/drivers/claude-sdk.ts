@@ -20,9 +20,13 @@ const REQUIRED_ENV_KEYS = [
 /**
  * Ensure ANTHROPIC_* env vars are present in process.env.
  * If any are missing, fill them from ~/.claude/settings.json → env.
+ *
+ * Exported so the bot can call it at startup — not just at first AI call.
+ * Early patching lets `resolveModel()` in the model menu card see real env
+ * values instead of the fallback `claude-opus-4-6` literals. Idempotent.
  */
 let _envPatched = false;
-function ensureClaudeEnv(): void {
+export function ensureClaudeEnv(): void {
   if (_envPatched) return;
   _envPatched = true;
 
@@ -98,6 +102,9 @@ export class ClaudeSDKDriver implements AISessionDriver {
     const sdkOptions: Partial<SDKOptions> = {
       allowedTools: ['Read', 'Write', 'Edit', 'Bash', 'Glob', 'Grep', 'WebSearch', 'WebFetch', 'Skill', 'Agent', 'WebFetch', 'NotebookEdit', 'TodoRead', 'TodoWrite'],
       settingSources: ['project' as any],  // Load .claude/skills, CLAUDE.md, slash commands
+      // Adaptive thinking (Opus 4.6+): Claude decides when/how much to think.
+      // Upstream Bedrock-backed proxy rejects the legacy `{type:'enabled'}` format.
+      thinking: { type: 'adaptive' } as any,
     };
 
     // Apply model: override > env default > opus
@@ -112,6 +119,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
     } else {
       // In default (non-auto) mode, register permission callback
       sdkOptions.canUseTool = async (toolName, input, options) => {
+        console.log(`[CLAUDE-PERM] canUseTool hit: tool=${toolName} conv=${conversationId} input-keys=${Object.keys(input || {}).join(',')}`);
         return new Promise<PermissionResult>((resolve) => {
           const requestId = createPendingRequest('permission', conversationId, resolve, config.claude.permissionTimeout);
 
@@ -233,6 +241,10 @@ export class ClaudeSDKDriver implements AISessionDriver {
             if (block.text) {
               session.accumulatedText += (session.accumulatedText ? '\n' : '') + block.text;
             }
+          }
+
+          if (toolBlocks.length > 0) {
+            console.log(`[CLAUDE-TOOL] assistant used ${toolBlocks.length} tool(s): ${toolBlocks.map((b: any) => b.name).join(', ')} conv=${conversationId}`);
           }
 
           // Handle tool use blocks

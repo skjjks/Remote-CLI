@@ -1,10 +1,23 @@
 import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager, SessionInfo } from '../terminal/session';
-import { AIManager, AIManagerCallbacks } from '../ai/manager';
+import { AIManager, AIManagerCallbacks, DetectedMenu } from '../ai/manager';
 import { ClaudeSDKDriver } from '../ai/drivers/claude-sdk';
 import { OpencodeSDKDriver } from '../ai/drivers/opencode-sdk';
-import { activeSessions, smartCard } from '../state';
+import { activeSessions, pendingRequests, smartCard } from '../state';
 import { resolvePendingInput } from '../ai/shared';
+
+/**
+ * Detect whether a menu is a permission prompt (Allow / Deny / Allow Always|All).
+ * Used by onMenu to route permission menus to a schema-2.0 button card
+ * while leaving other menus on the legacy numeric-select path.
+ */
+function isPermissionMenu(menu: DetectedMenu): boolean {
+  if (menu.options.length !== 3) return false;
+  const labels = menu.options.map(o => o.label.toLowerCase());
+  if (labels[0] !== 'allow') return false;
+  if (labels[1] !== 'deny') return false;
+  return labels[2] === 'allow always' || labels[2] === 'allow all';
+}
 
 // ── Shared AI callbacks ──
 
@@ -41,8 +54,42 @@ const aiCallbacks: AIManagerCallbacks = {
 
   onMenu: async (conversationId, menu) => {
     const feishuBot = getFeishuBot();
-    const card = smartCard.buildMenuCard(menu.title, menu.options, menu.hint);
-    await feishuBot.sendCard(conversationId, card);
+
+    if (!isPermissionMenu(menu)) {
+      const card = smartCard.buildMenuCard(menu.title, menu.options, menu.hint);
+      await feishuBot.sendCard(conversationId, card);
+      return;
+    }
+
+    const pendingEntry = [...pendingRequests.entries()].find(
+      ([, entry]) => entry.conversationId === conversationId && entry.type === 'permission',
+    );
+    if (!pendingEntry) {
+      console.warn('[AI] Permission menu with no pending request for conversation', conversationId);
+      const card = smartCard.buildMenuCard(menu.title, menu.options, menu.hint);
+      await feishuBot.sendCard(conversationId, card);
+      return;
+    }
+
+    const [requestId, entry] = pendingEntry;
+    const requesterOpenId = entry.requesterOpenId ?? '';
+    const bodyMarkdown = menu.hint || menu.options.map(o => `- ${o.label}`).join('\n');
+
+    const card = smartCard.buildConfirmCardV2({
+      title: menu.title || 'Permission request',
+      headerTemplate: 'orange',
+      bodyMarkdown,
+      buttons: [
+        { label: '✓ Allow', variant: 'primary', value: { kind: 'permission', requestId, choice: 'allow', requesterOpenId } },
+        { label: '✗ Deny', variant: 'danger', value: { kind: 'permission', requestId, choice: 'deny', requesterOpenId } },
+        { label: '✓✓ Allow Always', variant: 'default', value: { kind: 'permission', requestId, choice: 'allow_always', requesterOpenId } },
+      ],
+    });
+
+    const messageId = await feishuBot.sendCard(conversationId, card);
+    if (messageId) {
+      entry.messageId = messageId;
+    }
   },
 
   onError: async (conversationId, error) => {

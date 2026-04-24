@@ -4,13 +4,14 @@ import { getFeishuBot } from './bot/feishu';
 import { getSessionManager, type SessionInfo } from './terminal/session';
 import * as tmux from './terminal/tmux';
 import { getShortcutKey } from './terminal/interactive';
-import { activeSessions, pendingPrompts, pendingFileUploads, COMMAND_PREFIX, smartCard } from './state';
+import { activeSessions, pendingPrompts, pendingFileUploads, lastRequester, COMMAND_PREFIX, smartCard } from './state';
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
 import { handleCloudCommand, forwardToClouddev } from './handlers/clouddev';
 import { handleFileUpload, handleFileDownload, handleFileOverwriteResponse } from './handlers/file';
 import type { AIManager } from './ai/manager';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
+import { ensureClaudeEnv } from './ai/drivers/claude-sdk';
 
 // ── Command handling ──
 
@@ -198,6 +199,8 @@ async function reconnectBackend(
 }
 
 async function main(): Promise<void> {
+  ensureClaudeEnv();
+
   const config = getConfig();
   const feishuBot = getFeishuBot();
 
@@ -221,6 +224,9 @@ async function main(): Promise<void> {
   eventDispatcher.register({
     'im.message.receive_v1': async (data: unknown) => {
       const message = feishuBot.parseMessage(data);
+      if (message && message.senderId && message.conversationId) {
+        lastRequester.set(message.conversationId, message.senderId);
+      }
       if (message) {
         console.log(`[MSG] ${message.content.slice(0, 50)}`);
 
@@ -259,11 +265,16 @@ async function main(): Promise<void> {
         doWork().catch(err => console.error('[MSG] Error:', err));
       }
     },
+    'card.action.trigger': async (data: unknown) => {
+      const { handleCardAction } = await import('./handlers/card-action');
+      return handleCardAction(data);
+    },
   });
 
   // Create WebSocket client
-  // Note: Card action callbacks (button clicks) are NOT supported in WebSocket mode.
-  // Users interact by typing numbers/text instead of clicking buttons.
+  // Card action callbacks (card.action.trigger) ARE supported in WebSocket mode
+  // for the new schema-2.0 card format. The event is registered on eventDispatcher
+  // above. Legacy schema-1.0 card callbacks (card.action.trigger_v1) are not.
   const wsClient = new lark.WSClient({
     appId: config.feishu.appId,
     appSecret: config.feishu.appSecret,

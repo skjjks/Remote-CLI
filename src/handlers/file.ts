@@ -4,7 +4,7 @@ import { execSync } from 'child_process';
 import os from 'os';
 import { getFeishuBot } from '../bot/feishu';
 import { getConfig } from '../config';
-import { pendingFileUploads } from '../state';
+import { pendingFileUploads, lastRequester, smartCard } from '../state';
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
@@ -41,9 +41,30 @@ export async function handleFileUpload(
       fileName,
       resourceType,
     });
+
+    const requesterOpenId = lastRequester.get(conversationId) ?? '';
+    const card = smartCard.buildConfirmCardV2({
+      title: '📁 File already exists',
+      headerTemplate: 'orange',
+      bodyMarkdown: `\`${fileName}\` already exists in \`${uploadDir}\`.\n\nOverwrite?`,
+      buttons: [
+        {
+          label: 'Overwrite',
+          variant: 'danger',
+          value: { kind: 'fileOverwrite', conversationId, choice: 'overwrite', requesterOpenId },
+        },
+        {
+          label: 'Cancel',
+          variant: 'default',
+          value: { kind: 'fileOverwrite', conversationId, choice: 'cancel', requesterOpenId },
+        },
+      ],
+    });
+    await feishuBot.sendCard(conversationId, card);
+    // Text fallback prompt — still sent so digit replies remain a valid path.
     await feishuBot.sendText(
       conversationId,
-      `File ${fileName} already exists. Reply 1 to overwrite, 0 to cancel.`,
+      `(Or reply 1 to overwrite, 0 to cancel.)`,
     );
     return;
   }

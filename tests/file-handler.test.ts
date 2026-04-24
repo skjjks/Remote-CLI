@@ -5,6 +5,7 @@ import path from 'path';
 
 const mockDownloadResource = vi.fn();
 const mockSendText = vi.fn();
+const mockSendCard = vi.fn();
 const mockUploadFile = vi.fn();
 const mockUploadImage = vi.fn();
 const mockSendFileMessage = vi.fn();
@@ -14,6 +15,7 @@ vi.mock('../src/bot/feishu', () => ({
   getFeishuBot: () => ({
     downloadResource: mockDownloadResource,
     sendText: mockSendText,
+    sendCard: mockSendCard,
     uploadFile: mockUploadFile,
     uploadImage: mockUploadImage,
     sendFileMessage: mockSendFileMessage,
@@ -48,6 +50,7 @@ describe('handleFileUpload', () => {
     mockUploadDir = tmpDir;
     mockDownloadResource.mockReset();
     mockSendText.mockReset();
+    mockSendCard.mockReset();
     pendingFileUploads.clear();
   });
 
@@ -76,7 +79,8 @@ describe('handleFileUpload', () => {
     await handleFileUpload('chat_001', 'msg_001', 'file_key_abc', 'report.pdf', 'file');
 
     expect(mockDownloadResource).not.toHaveBeenCalled();
-    expect(mockSendText).toHaveBeenCalledWith('chat_001', expect.stringContaining('already exists'));
+    expect(mockSendCard).toHaveBeenCalled();
+    expect(mockSendText).toHaveBeenCalledWith('chat_001', expect.stringContaining('reply 1 to overwrite'));
     expect(pendingFileUploads.has('chat_001')).toBe(true);
   });
 

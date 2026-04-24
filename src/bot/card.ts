@@ -3,6 +3,7 @@
  * Builds dynamically-partitioned Feishu cards for Claude events and terminal output.
  */
 
+import type { CardActionValue } from './card-action-types';
 
 // ── Feishu Card V2 types (markdown-based) ──
 
@@ -21,6 +22,47 @@ type FeishuCardElement =
   | { tag: 'action'; actions: CardButton[] }
   | { tag: 'div'; text: { tag: 'plain_text'; content: string } }
   | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> };
+
+// ── Feishu Card V2 types (schema 2.0 — interactive cards) ──
+
+export interface FeishuCardV2Schema20 {
+  schema: '2.0';
+  config: { update_multi: boolean };
+  header: {
+    title: { tag: 'plain_text'; content: string };
+    template: string;
+  };
+  body: {
+    elements: FeishuCardV2Schema20Element[];
+  };
+}
+
+type FeishuCardV2Button = {
+  tag: 'button';
+  text: { tag: 'plain_text'; content: string };
+  type: 'primary' | 'danger' | 'default';
+  behaviors: Array<{ type: 'callback'; value: CardActionValue }>;
+  width?: 'default' | 'fill';
+  disabled?: boolean;
+};
+
+type FeishuCardV2Schema20Element =
+  | { tag: 'markdown'; content: string }
+  | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> }
+  | FeishuCardV2Button
+  | {
+      // Schema 2.0 no longer supports `tag: 'action'`. Buttons live directly in
+      // `elements`; use `column_set` to lay them out horizontally.
+      tag: 'column_set';
+      flex_mode: 'flow' | 'none' | 'bisect' | 'trisect';
+      columns: Array<{
+        tag: 'column';
+        width: 'auto' | 'weighted';
+        weight?: number;
+        vertical_align?: 'top' | 'center' | 'bottom';
+        elements: FeishuCardV2Schema20Element[];
+      }>;
+    };
 
 // ── Legacy V1 types (kept for backward compatibility) ──
 
@@ -615,6 +657,271 @@ export class SmartCardBuilder {
     return this.card('Error', 'red', [
       { tag: 'markdown', content: `\`\`\`\n${error}\n\`\`\`` },
     ]);
+  }
+
+  /**
+   * Schema 2.0 confirmation card with callback buttons.
+   * Separate from legacy `buildMenuCard`/`card()` helpers so existing
+   * non-interactive flows stay on schema 1.0.
+   */
+   buildConfirmCardV2(opts: {
+     title: string;
+     headerTemplate?: 'blue' | 'orange' | 'red' | 'green';
+     bodyMarkdown: string;
+     buttons: Array<{
+       label: string;
+       variant: 'primary' | 'danger' | 'default';
+       value: CardActionValue;
+     }>;
+   }): FeishuCardV2Schema20 {
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: opts.title },
+        template: opts.headerTemplate ?? 'orange',
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: opts.bodyMarkdown },
+          {
+            tag: 'column_set',
+            flex_mode: 'flow',
+            columns: opts.buttons.map(b => ({
+              tag: 'column' as const,
+              width: 'weighted' as const,
+              weight: 1,
+              vertical_align: 'top' as const,
+              elements: [{
+                tag: 'button' as const,
+                text: { tag: 'plain_text' as const, content: b.label },
+                type: b.variant,
+                width: 'fill' as const,
+                behaviors: [{ type: 'callback' as const, value: b.value }],
+              }],
+            })),
+          },
+        ],
+      },
+    };
+  }
+
+  /** Schema 2.0 read-only card used to replace a confirm card after resolution. */
+   buildResolvedCardV2(opts: {
+     title: string;
+     bodyMarkdown: string;
+     statusText: string;
+     statusColor: 'green' | 'red' | 'grey';
+   }): FeishuCardV2Schema20 {
+     return {
+       schema: '2.0',
+       config: { update_multi: true },
+       header: {
+         title: { tag: 'plain_text', content: opts.title },
+         template: opts.statusColor,
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: opts.bodyMarkdown },
+          { tag: 'note', elements: [{ tag: 'plain_text', content: opts.statusText }] },
+        ],
+      },
+    };
+  }
+
+  /**
+   * Schema 2.0 menu card for model selection. One button per model + a
+   * Reset button. Used by !model when no argument is provided.
+   *
+   * When models carry a `group` field, buttons are split into one
+   * column_set per group with a ── {group} ── markdown separator before each.
+   */
+  buildModelMenuCardV2(opts: {
+    currentModel: string | undefined;
+    backend: 'claude' | 'opencode';
+    models: Array<{ shortcut: string; model: string; desc?: string; group?: string }>;
+    requesterOpenId: string;
+  }): FeishuCardV2Schema20 {
+    const currentLine = opts.currentModel
+      ? `**Current:** \`${opts.currentModel}\``
+      : '**Current:** default (no override)';
+
+    const backendLabel = opts.backend === 'opencode' ? 'Opencode' : 'Claude';
+
+    // Preserve insertion order of groups while deduplicating.
+    const groupOrder: string[] = [];
+    const byGroup = new Map<string, typeof opts.models>();
+    for (const m of opts.models) {
+      const g = m.group ?? '';
+      if (!byGroup.has(g)) {
+        byGroup.set(g, []);
+        groupOrder.push(g);
+      }
+      byGroup.get(g)!.push(m);
+    }
+    const hasGroups = groupOrder.some(g => g !== '');
+
+    let markdownBody = `${currentLine}\n\n**Available:**`;
+    for (const g of groupOrder) {
+      const groupModels = byGroup.get(g)!;
+      if (hasGroups && g !== '') {
+        markdownBody += `\n\n*${g}*`;
+      }
+      for (const m of groupModels) {
+        const descSuffix = m.desc ? ` — ${m.desc}` : '';
+        markdownBody += `\n- \`${m.shortcut}\` → \`${m.model}\`${descSuffix}`;
+      }
+    }
+
+    const bodyElements: FeishuCardV2Schema20Element[] = [
+      { tag: 'markdown', content: markdownBody },
+    ];
+
+    const makeColumn = (label: string, value: CardActionValue, variant: 'primary' | 'default') => ({
+      tag: 'column' as const,
+      width: 'weighted' as const,
+      weight: 1,
+      vertical_align: 'top' as const,
+      elements: [{
+        tag: 'button' as const,
+        text: { tag: 'plain_text' as const, content: label },
+        type: variant,
+        width: 'fill' as const,
+        behaviors: [{ type: 'callback' as const, value }],
+      }],
+    });
+
+    for (const g of groupOrder) {
+      const groupModels = byGroup.get(g)!;
+      if (hasGroups && g !== '') {
+        bodyElements.push({ tag: 'markdown', content: `── ${g} ──` });
+      }
+      bodyElements.push({
+        tag: 'column_set',
+        flex_mode: 'flow',
+        columns: groupModels.map(m => makeColumn(
+          m.shortcut,
+          {
+            kind: 'modelSwitch',
+            choice: m.shortcut,
+            backend: opts.backend,
+            requesterOpenId: opts.requesterOpenId,
+          },
+          'primary',
+        )),
+      });
+    }
+
+    bodyElements.push({
+      tag: 'column_set',
+      flex_mode: 'flow',
+      columns: [makeColumn(
+        '🔄 Reset',
+        { kind: 'modelSwitch', choice: 'reset', backend: opts.backend, requesterOpenId: opts.requesterOpenId },
+        'default',
+      )],
+    });
+
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: `🎯 ${backendLabel} Model` },
+        template: 'blue',
+      },
+      body: { elements: bodyElements },
+    };
+  }
+
+  /**
+   * Schema 2.0 menu card for session selection. Active session button is
+   * disabled and glyph-marked; other sessions are clickable; 3 "New …"
+   * buttons at the bottom cover Claude / opencode / terminal creation.
+   * Used by !list and !switch (no arg).
+   */
+  buildSessionMenuCardV2(opts: {
+    activeSessionId: number | undefined;
+    sessions: Array<{ id: number; type: string; createdDisplay: string }>;
+    requesterOpenId: string;
+  }): FeishuCardV2Schema20 {
+    const headerLine = opts.activeSessionId !== undefined
+      ? `**Active:** #${opts.activeSessionId}`
+      : '**No sessions yet**';
+
+    const elements: any[] = [
+      { tag: 'markdown', content: headerLine },
+    ];
+
+    if (opts.sessions.length > 0) {
+      elements.push({
+        tag: 'column_set',
+        flex_mode: 'flow',
+        columns: opts.sessions.map(s => {
+          const isActive = s.id === opts.activeSessionId;
+          const label = isActive
+            ? `✓ #${s.id} ${s.type}`
+            : `#${s.id} ${s.type} · ${s.createdDisplay}`;
+          return {
+            tag: 'column' as const,
+            width: 'weighted' as const,
+            weight: 1,
+            vertical_align: 'top' as const,
+            elements: [{
+              tag: 'button' as const,
+              text: { tag: 'plain_text' as const, content: label },
+              type: (isActive ? 'default' : 'primary') as 'default' | 'primary',
+              width: 'fill' as const,
+              disabled: isActive,
+              behaviors: [{
+                type: 'callback' as const,
+                value: {
+                  kind: 'sessionSwitch' as const,
+                  choice: { type: 'existing' as const, sessionId: s.id },
+                  requesterOpenId: opts.requesterOpenId,
+                },
+              }],
+            }],
+          };
+        }),
+      });
+    }
+
+    elements.push({ tag: 'markdown', content: '**New:**' });
+
+    elements.push({
+      tag: 'column_set',
+      flex_mode: 'flow',
+      columns: (['claude', 'opencode', 'terminal'] as const).map(backend => ({
+        tag: 'column' as const,
+        width: 'weighted' as const,
+        weight: 1,
+        vertical_align: 'top' as const,
+        elements: [{
+          tag: 'button' as const,
+          text: { tag: 'plain_text' as const, content: `+ ${backend}` },
+          type: 'default' as const,
+          width: 'fill' as const,
+          behaviors: [{
+            type: 'callback' as const,
+            value: {
+              kind: 'sessionSwitch' as const,
+              choice: { type: 'new' as const, backend },
+              requesterOpenId: opts.requesterOpenId,
+            },
+          }],
+        }],
+      })),
+    });
+
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: '💼 Sessions' },
+        template: 'blue',
+      },
+      body: { elements },
+    };
   }
 }
 
