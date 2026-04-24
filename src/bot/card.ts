@@ -732,11 +732,14 @@ export class SmartCardBuilder {
   /**
    * Schema 2.0 menu card for model selection. One button per model + a
    * Reset button. Used by !model when no argument is provided.
+   *
+   * When models carry a `group` field, buttons are split into one
+   * column_set per group with a ── {group} ── markdown separator before each.
    */
   buildModelMenuCardV2(opts: {
     currentModel: string | undefined;
     backend: 'claude' | 'opencode';
-    models: Array<{ shortcut: string; model: string; desc?: string }>;
+    models: Array<{ shortcut: string; model: string; desc?: string; group?: string }>;
     requesterOpenId: string;
   }): FeishuCardV2Schema20 {
     const currentLine = opts.currentModel
@@ -745,33 +748,79 @@ export class SmartCardBuilder {
 
     const backendLabel = opts.backend === 'opencode' ? 'Opencode' : 'Claude';
 
-    const modelTable = opts.models
-      .map(m => `- \`${m.shortcut}\` → \`${m.model}\`${m.desc ? ` — ${m.desc}` : ''}`)
-      .join('\n');
-    const markdownBody = `${currentLine}\n\n**Available:**\n${modelTable}`;
+    // Preserve insertion order of groups while deduplicating.
+    const groupOrder: string[] = [];
+    const byGroup = new Map<string, typeof opts.models>();
+    for (const m of opts.models) {
+      const g = m.group ?? '';
+      if (!byGroup.has(g)) {
+        byGroup.set(g, []);
+        groupOrder.push(g);
+      }
+      byGroup.get(g)!.push(m);
+    }
+    const hasGroups = groupOrder.some(g => g !== '');
 
-    const buttons = [
-      ...opts.models.map(m => ({
-        label: m.shortcut,
-        variant: 'primary' as const,
-        value: {
-          kind: 'modelSwitch' as const,
-          choice: m.shortcut,
-          backend: opts.backend,
-          requesterOpenId: opts.requesterOpenId,
-        },
-      })),
-      {
-        label: '🔄 Reset',
-        variant: 'default' as const,
-        value: {
-          kind: 'modelSwitch' as const,
-          choice: 'reset',
-          backend: opts.backend,
-          requesterOpenId: opts.requesterOpenId,
-        },
-      },
+    let markdownBody = `${currentLine}\n\n**Available:**`;
+    for (const g of groupOrder) {
+      const groupModels = byGroup.get(g)!;
+      if (hasGroups && g !== '') {
+        markdownBody += `\n\n*${g}*`;
+      }
+      for (const m of groupModels) {
+        const descSuffix = m.desc ? ` — ${m.desc}` : '';
+        markdownBody += `\n- \`${m.shortcut}\` → \`${m.model}\`${descSuffix}`;
+      }
+    }
+
+    const bodyElements: FeishuCardV2Schema20Element[] = [
+      { tag: 'markdown', content: markdownBody },
     ];
+
+    const makeColumn = (label: string, value: CardActionValue, variant: 'primary' | 'default') => ({
+      tag: 'column' as const,
+      width: 'weighted' as const,
+      weight: 1,
+      vertical_align: 'top' as const,
+      elements: [{
+        tag: 'button' as const,
+        text: { tag: 'plain_text' as const, content: label },
+        type: variant,
+        width: 'fill' as const,
+        behaviors: [{ type: 'callback' as const, value }],
+      }],
+    });
+
+    for (const g of groupOrder) {
+      const groupModels = byGroup.get(g)!;
+      if (hasGroups && g !== '') {
+        bodyElements.push({ tag: 'markdown', content: `── ${g} ──` });
+      }
+      bodyElements.push({
+        tag: 'column_set',
+        flex_mode: 'flow',
+        columns: groupModels.map(m => makeColumn(
+          m.shortcut,
+          {
+            kind: 'modelSwitch',
+            choice: m.shortcut,
+            backend: opts.backend,
+            requesterOpenId: opts.requesterOpenId,
+          },
+          'primary',
+        )),
+      });
+    }
+
+    bodyElements.push({
+      tag: 'column_set',
+      flex_mode: 'flow',
+      columns: [makeColumn(
+        '🔄 Reset',
+        { kind: 'modelSwitch', choice: 'reset', backend: opts.backend, requesterOpenId: opts.requesterOpenId },
+        'default',
+      )],
+    });
 
     return {
       schema: '2.0',
@@ -780,28 +829,7 @@ export class SmartCardBuilder {
         title: { tag: 'plain_text', content: `🎯 ${backendLabel} Model` },
         template: 'blue',
       },
-      body: {
-        elements: [
-          { tag: 'markdown', content: markdownBody },
-          {
-            tag: 'column_set',
-            flex_mode: 'flow',
-            columns: buttons.map(b => ({
-              tag: 'column' as const,
-              width: 'weighted' as const,
-              weight: 1,
-              vertical_align: 'top' as const,
-              elements: [{
-                tag: 'button' as const,
-                text: { tag: 'plain_text' as const, content: b.label },
-                type: b.variant,
-                width: 'fill' as const,
-                behaviors: [{ type: 'callback' as const, value: b.value }],
-              }],
-            })),
-          },
-        ],
-      },
+      body: { elements: bodyElements },
     };
   }
 

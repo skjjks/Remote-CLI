@@ -25,7 +25,7 @@ describe('buildModelMenuCardV2', () => {
 
     const columnSet = body.body.elements[1];
     expect(columnSet.tag).toBe('column_set');
-    expect(columnSet.columns).toHaveLength(3);
+    expect(columnSet.columns).toHaveLength(2);
 
     const btnOpus = columnSet.columns[0].elements[0];
     expect(btnOpus).toMatchObject({
@@ -42,7 +42,9 @@ describe('buildModelMenuCardV2', () => {
       }],
     });
 
-    const btnReset = columnSet.columns[2].elements[0];
+    const resetColumnSet = body.body.elements[2];
+    expect(resetColumnSet.tag).toBe('column_set');
+    const btnReset = resetColumnSet.columns[0].elements[0];
     expect(btnReset.text.content).toContain('Reset');
     expect(btnReset.behaviors[0].value.choice).toBe('reset');
   });
@@ -56,6 +58,35 @@ describe('buildModelMenuCardV2', () => {
     });
     const body = card as any;
     expect(body.body.elements[0].content).toContain('default');
+  });
+  test('renders grouped column_sets when models carry group field', () => {
+    const card = smart.buildModelMenuCardV2({
+      currentModel: undefined,
+      backend: 'opencode',
+      models: [
+        { shortcut: 'gpt-5.4', model: 'Mify-OpenAI/azure_openai/gpt-5.4', group: 'Mify-OpenAI' },
+        { shortcut: 'gpt-5.4-pro', model: 'Mify-OpenAI/azure_openai/gpt-5.4-pro', group: 'Mify-OpenAI' },
+        { shortcut: 'claude-opus-4-7', model: 'Mify-Anthropic/ppio/pa/claude-opus-4-7', group: 'Mify-Anthropic' },
+      ],
+      requesterOpenId: 'ou_1',
+    });
+
+    const body = (card as any).body.elements;
+
+    const separatorTexts = body
+      .filter((e: any) => e.tag === 'markdown' && typeof e.content === 'string' && e.content.includes('──'))
+      .map((e: any) => e.content);
+    expect(separatorTexts.some((s: string) => s.includes('Mify-OpenAI'))).toBe(true);
+    expect(separatorTexts.some((s: string) => s.includes('Mify-Anthropic'))).toBe(true);
+
+    const columnSets = body.filter((e: any) => e.tag === 'column_set');
+    expect(columnSets.length).toBeGreaterThanOrEqual(3);
+
+    const openAIset = columnSets.find((cs: any) =>
+      cs.columns[0]?.elements[0]?.behaviors?.[0]?.value?.choice === 'gpt-5.4'
+    );
+    expect(openAIset).toBeDefined();
+    expect(openAIset.columns).toHaveLength(2);
   });
 });
 
