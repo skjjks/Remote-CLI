@@ -43,6 +43,7 @@ type FeishuCardV2Button = {
   type: 'primary' | 'danger' | 'default';
   behaviors: Array<{ type: 'callback'; value: CardActionValue }>;
   width?: 'default' | 'fill';
+  disabled?: boolean;
 };
 
 type FeishuCardV2Schema20Element =
@@ -796,6 +797,97 @@ export class SmartCardBuilder {
           },
         ],
       },
+    };
+  }
+
+  /**
+   * Schema 2.0 menu card for session selection. Active session button is
+   * disabled and glyph-marked; other sessions are clickable; 3 "New …"
+   * buttons at the bottom cover Claude / opencode / terminal creation.
+   * Used by !list and !switch (no arg).
+   */
+  buildSessionMenuCardV2(opts: {
+    activeSessionId: number | undefined;
+    sessions: Array<{ id: number; type: string; createdDisplay: string }>;
+    requesterOpenId: string;
+  }): FeishuCardV2Schema20 {
+    const headerLine = opts.activeSessionId !== undefined
+      ? `**Active:** #${opts.activeSessionId}`
+      : '**No sessions yet**';
+
+    const elements: any[] = [
+      { tag: 'markdown', content: headerLine },
+    ];
+
+    if (opts.sessions.length > 0) {
+      elements.push({
+        tag: 'column_set',
+        flex_mode: 'flow',
+        columns: opts.sessions.map(s => {
+          const isActive = s.id === opts.activeSessionId;
+          const label = isActive
+            ? `✓ #${s.id} ${s.type}`
+            : `#${s.id} ${s.type} · ${s.createdDisplay}`;
+          return {
+            tag: 'column' as const,
+            width: 'weighted' as const,
+            weight: 1,
+            vertical_align: 'top' as const,
+            elements: [{
+              tag: 'button' as const,
+              text: { tag: 'plain_text' as const, content: label },
+              type: (isActive ? 'default' : 'primary') as 'default' | 'primary',
+              width: 'fill' as const,
+              disabled: isActive,
+              behaviors: [{
+                type: 'callback' as const,
+                value: {
+                  kind: 'sessionSwitch' as const,
+                  choice: { type: 'existing' as const, sessionId: s.id },
+                  requesterOpenId: opts.requesterOpenId,
+                },
+              }],
+            }],
+          };
+        }),
+      });
+    }
+
+    elements.push({ tag: 'markdown', content: '**New:**' });
+
+    elements.push({
+      tag: 'column_set',
+      flex_mode: 'flow',
+      columns: (['claude', 'opencode', 'terminal'] as const).map(backend => ({
+        tag: 'column' as const,
+        width: 'weighted' as const,
+        weight: 1,
+        vertical_align: 'top' as const,
+        elements: [{
+          tag: 'button' as const,
+          text: { tag: 'plain_text' as const, content: `+ ${backend}` },
+          type: 'default' as const,
+          width: 'fill' as const,
+          behaviors: [{
+            type: 'callback' as const,
+            value: {
+              kind: 'sessionSwitch' as const,
+              choice: { type: 'new' as const, backend },
+              requesterOpenId: opts.requesterOpenId,
+            },
+          }],
+        }],
+      })),
+    });
+
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: '💼 Sessions' },
+        template: 'blue',
+      },
+      body: { elements },
     };
   }
 }
