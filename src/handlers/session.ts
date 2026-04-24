@@ -1,7 +1,7 @@
 import { getFeishuBot } from '../bot/feishu';
 import { getSessionManager } from '../terminal/session';
 import * as tmux from '../terminal/tmux';
-import { activeSessions, commandHistory, modelOverrides } from '../state';
+import { activeSessions, commandHistory, modelOverrides, lastRequester, smartCard } from '../state';
 import { getClaudeManager, getOpencodeManager } from './ai';
 import { getModelShortcuts, resolveModel, getPopularModels } from '../ai/models';
 
@@ -225,20 +225,15 @@ export async function handleModel(conversationId: string, model?: string): Promi
 
   if (!model || model === 'list') {
     const current = modelOverrides.get(conversationId);
-    const lines: string[] = [
-      current ? `Current: **${current}**` : 'Current: default (no override)',
-      '',
-    ];
-
-    const label = isOpencode ? 'Opencode' : 'Claude';
-    lines.push(`**${label} models:**`);
-    for (const m of getPopularModels(isOpencode ? 'opencode' : 'claude')) {
-      const suffix = m.desc ? ` (${m.desc})` : '';
-      lines.push(`  \`!model ${m.shortcut}\` → ${m.model}${suffix}`);
-    }
-
-    lines.push('', 'Or use full model name directly', '`!model reset` to clear override');
-    await feishuBot.sendText(conversationId, lines.join('\n'));
+    const requesterOpenId = lastRequester.get(conversationId) ?? '';
+    const backend = isOpencode ? 'opencode' as const : 'claude' as const;
+    const card = smartCard.buildModelMenuCardV2({
+      currentModel: current,
+      backend,
+      models: getPopularModels(backend),
+      requesterOpenId,
+    });
+    await feishuBot.sendCard(conversationId, card);
     return;
   }
 
