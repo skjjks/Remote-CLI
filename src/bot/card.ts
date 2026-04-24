@@ -727,5 +727,76 @@ export class SmartCardBuilder {
       },
     };
   }
+
+  /**
+   * Schema 2.0 menu card for model selection. One button per model + a
+   * Reset button. Used by !model when no argument is provided.
+   */
+  buildModelMenuCardV2(opts: {
+    currentModel: string | undefined;
+    backend: 'claude' | 'opencode';
+    models: Array<{ shortcut: string; model: string; desc?: string }>;
+    requesterOpenId: string;
+  }): FeishuCardV2Schema20 {
+    const currentLine = opts.currentModel
+      ? `**Current:** \`${opts.currentModel}\``
+      : '**Current:** default (no override)';
+
+    const backendLabel = opts.backend === 'opencode' ? 'Opencode' : 'Claude';
+
+    const buttons = [
+      ...opts.models.map(m => ({
+        label: m.shortcut,
+        variant: 'primary' as const,
+        value: {
+          kind: 'modelSwitch' as const,
+          choice: m.shortcut,
+          backend: opts.backend,
+          requesterOpenId: opts.requesterOpenId,
+        },
+      })),
+      {
+        label: '🔄 Reset',
+        variant: 'default' as const,
+        value: {
+          kind: 'modelSwitch' as const,
+          choice: 'reset',
+          backend: opts.backend,
+          requesterOpenId: opts.requesterOpenId,
+        },
+      },
+    ];
+
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: `🎯 ${backendLabel} Model` },
+        template: 'blue',
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: currentLine },
+          {
+            tag: 'column_set',
+            flex_mode: 'flow',
+            columns: buttons.map(b => ({
+              tag: 'column' as const,
+              width: 'weighted' as const,
+              weight: 1,
+              vertical_align: 'top' as const,
+              elements: [{
+                tag: 'button' as const,
+                text: { tag: 'plain_text' as const, content: b.label },
+                type: b.variant,
+                width: 'fill' as const,
+                behaviors: [{ type: 'callback' as const, value: b.value }],
+              }],
+            })),
+          },
+        ],
+      },
+    };
+  }
 }
 
