@@ -17,6 +17,19 @@ export type CardActionValue =
       conversationId: string;
       choice: 'overwrite' | 'cancel';
       requesterOpenId: string;
+    }
+  | {
+      kind: 'modelSwitch';
+      choice: string;
+      backend: 'claude' | 'opencode';
+      requesterOpenId: string;
+    }
+  | {
+      kind: 'sessionSwitch';
+      choice:
+        | { type: 'existing'; sessionId: number }
+        | { type: 'new'; backend: 'claude' | 'opencode' | 'terminal' };
+      requesterOpenId: string;
     };
 
 /** Fields extracted from the WebSocket `card.action.trigger` payload. */
