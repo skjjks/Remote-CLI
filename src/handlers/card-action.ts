@@ -4,10 +4,13 @@ import type {
   CardActionResult,
   CardActionValue,
 } from '../bot/card-action-types';
-import { pendingRequests, smartCard } from '../state';
+import { pendingRequests, smartCard, modelOverrides, activeSessions } from '../state';
 import { resolvePendingRequestById } from '../ai/shared';
 import { getFeishuBot } from '../bot/feishu';
 import { handleFileOverwriteResponse } from './file';
+import { resolveModel } from '../ai/models';
+import { getSessionManager } from '../terminal/session';
+import * as tmux from '../terminal/tmux';
 
 const registry = new Map<string, CardActionHandler>();
 
@@ -142,5 +145,101 @@ registerCardActionHandler('fileOverwrite', async (value, ctx): Promise<CardActio
       type: 'success',
       content: value.choice === 'overwrite' ? 'Overwriting' : 'Cancelled',
     } as const,
+  };
+});
+
+registerCardActionHandler('modelSwitch', async (value, ctx): Promise<CardActionResult> => {
+  if (value.kind !== 'modelSwitch') {
+    return { toast: { type: 'error', content: 'Unknown action' } as const };
+  }
+  if (value.requesterOpenId && value.requesterOpenId !== ctx.openId) {
+    return { toast: { type: 'warning', content: 'Only the requester can use this menu' } as const };
+  }
+
+  let statusText: string;
+  if (value.choice === 'reset') {
+    modelOverrides.delete(ctx.chatId);
+    statusText = 'Model reset to default';
+  } else {
+    const resolved = resolveModel(value.backend, value.choice);
+    modelOverrides.set(ctx.chatId, resolved);
+    statusText = `Model: ${resolved}`;
+  }
+
+  if (ctx.messageId) {
+    const resolvedCard = smartCard.buildResolvedCardV2({
+      title: '🎯 Model',
+      bodyMarkdown: '',
+      statusText: `✓ ${statusText}`,
+      statusColor: 'green',
+    });
+    await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
+  }
+
+  return {
+    toast: { type: 'success', content: statusText } as const,
+  };
+});
+
+registerCardActionHandler('sessionSwitch', async (value, ctx): Promise<CardActionResult> => {
+  if (value.kind !== 'sessionSwitch') {
+    return { toast: { type: 'error', content: 'Unknown action' } as const };
+  }
+  if (value.requesterOpenId && value.requesterOpenId !== ctx.openId) {
+    return { toast: { type: 'warning', content: 'Only the requester can use this menu' } as const };
+  }
+
+  const sessionManager = getSessionManager();
+  let statusText: string;
+  let statusColor: 'green' | 'red' = 'green';
+
+  if (value.choice.type === 'existing') {
+    const sessionId = value.choice.sessionId;
+    const session = sessionManager.getSession(sessionId);
+    if (!session) {
+      statusText = `✗ Session #${sessionId} no longer exists`;
+      statusColor = 'red';
+    } else if (session.conversationId && session.conversationId !== ctx.chatId) {
+      statusText = `✗ Session #${sessionId} belongs to another conversation`;
+      statusColor = 'red';
+    } else if (session.type === 'terminal' && session.tmuxName) {
+      const alive = await tmux.sessionExists(session.tmuxName);
+      if (!alive) {
+        statusText = `✗ Session #${sessionId} no longer exists`;
+        statusColor = 'red';
+      } else {
+        activeSessions.set(ctx.chatId, sessionId);
+        statusText = `✓ Switched to #${sessionId} ${session.type}`;
+      }
+    } else {
+      activeSessions.set(ctx.chatId, sessionId);
+      statusText = `✓ Switched to #${sessionId} ${session.type}`;
+    }
+  } else {
+    const backend = value.choice.backend;
+    let session;
+    if (backend === 'claude') {
+      session = sessionManager.createClaudeSession(ctx.chatId);
+    } else if (backend === 'opencode') {
+      session = sessionManager.createOpencodeSession(ctx.chatId);
+    } else {
+      session = await sessionManager.createSession(ctx.chatId);
+    }
+    activeSessions.set(ctx.chatId, session.id);
+    statusText = `✓ Created #${session.id} ${backend}`;
+  }
+
+  if (ctx.messageId) {
+    const resolvedCard = smartCard.buildResolvedCardV2({
+      title: '💼 Sessions',
+      bodyMarkdown: '',
+      statusText,
+      statusColor,
+    });
+    await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
+  }
+
+  return {
+    toast: { type: statusColor === 'red' ? 'warning' : 'success', content: statusText } as const,
   };
 });
