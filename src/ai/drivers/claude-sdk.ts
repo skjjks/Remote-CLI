@@ -115,6 +115,7 @@ export class ClaudeSDKDriver implements AISessionDriver {
     } else {
       // In default (non-auto) mode, register permission callback
       sdkOptions.canUseTool = async (toolName, input, options) => {
+        console.log(`[CLAUDE-PERM] canUseTool hit: tool=${toolName} conv=${conversationId} input-keys=${Object.keys(input || {}).join(',')}`);
         return new Promise<PermissionResult>((resolve) => {
           const requestId = createPendingRequest('permission', conversationId, resolve, config.claude.permissionTimeout);
 
@@ -236,6 +237,10 @@ export class ClaudeSDKDriver implements AISessionDriver {
             if (block.text) {
               session.accumulatedText += (session.accumulatedText ? '\n' : '') + block.text;
             }
+          }
+
+          if (toolBlocks.length > 0) {
+            console.log(`[CLAUDE-TOOL] assistant used ${toolBlocks.length} tool(s): ${toolBlocks.map((b: any) => b.name).join(', ')} conv=${conversationId}`);
           }
 
           // Handle tool use blocks
