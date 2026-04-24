@@ -11,6 +11,7 @@ import { handleCloudCommand, forwardToClouddev } from './handlers/clouddev';
 import { handleFileUpload, handleFileDownload, handleFileOverwriteResponse } from './handlers/file';
 import type { AIManager } from './ai/manager';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
+import { ensureClaudeEnv } from './ai/drivers/claude-sdk';
 
 // ── Command handling ──
 
@@ -198,6 +199,8 @@ async function reconnectBackend(
 }
 
 async function main(): Promise<void> {
+  ensureClaudeEnv();
+
   const config = getConfig();
   const feishuBot = getFeishuBot();
 

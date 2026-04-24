@@ -20,9 +20,13 @@ const REQUIRED_ENV_KEYS = [
 /**
  * Ensure ANTHROPIC_* env vars are present in process.env.
  * If any are missing, fill them from ~/.claude/settings.json → env.
+ *
+ * Exported so the bot can call it at startup — not just at first AI call.
+ * Early patching lets `resolveModel()` in the model menu card see real env
+ * values instead of the fallback `claude-opus-4-6` literals. Idempotent.
  */
 let _envPatched = false;
-function ensureClaudeEnv(): void {
+export function ensureClaudeEnv(): void {
   if (_envPatched) return;
   _envPatched = true;
 

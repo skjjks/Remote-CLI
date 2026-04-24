@@ -745,6 +745,11 @@ export class SmartCardBuilder {
 
     const backendLabel = opts.backend === 'opencode' ? 'Opencode' : 'Claude';
 
+    const modelTable = opts.models
+      .map(m => `- \`${m.shortcut}\` → \`${m.model}\`${m.desc ? ` — ${m.desc}` : ''}`)
+      .join('\n');
+    const markdownBody = `${currentLine}\n\n**Available:**\n${modelTable}`;
+
     const buttons = [
       ...opts.models.map(m => ({
         label: m.shortcut,
@@ -777,7 +782,7 @@ export class SmartCardBuilder {
       },
       body: {
         elements: [
-          { tag: 'markdown', content: currentLine },
+          { tag: 'markdown', content: markdownBody },
           {
             tag: 'column_set',
             flex_mode: 'flow',
