@@ -58,3 +58,72 @@ describe('buildModelMenuCardV2', () => {
     expect(body.body.elements[0].content).toContain('default');
   });
 });
+
+// ── Handler integration tests (Task 7) ──
+
+import { vi, beforeEach, afterEach } from 'vitest';
+import { modelOverrides } from '../src/state';
+import { handleCardAction } from '../src/handlers/card-action';
+
+vi.mock('../src/bot/feishu', () => ({
+  getFeishuBot: () => ({ updateCard: vi.fn(async () => {}) }),
+}));
+
+import '../src/handlers/card-action';
+
+describe('modelSwitch card action', () => {
+  beforeEach(() => modelOverrides.clear());
+  afterEach(() => modelOverrides.clear());
+
+  test('opus click sets modelOverrides and returns success toast', async () => {
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'modelSwitch',
+          choice: 'opus',
+          backend: 'claude',
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_1' },
+    });
+    expect(result.toast?.type).toBe('success');
+    expect(modelOverrides.has('oc_1')).toBe(true);
+  });
+
+  test('reset click clears modelOverrides', async () => {
+    modelOverrides.set('oc_1', 'some/model');
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'modelSwitch',
+          choice: 'reset',
+          backend: 'claude',
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_1' },
+    });
+    expect(result.toast?.type).toBe('success');
+    expect(modelOverrides.has('oc_1')).toBe(false);
+  });
+
+  test('non-requester click is rejected', async () => {
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'modelSwitch',
+          choice: 'opus',
+          backend: 'claude',
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_STRANGER' },
+    });
+    expect(result.toast?.type).toBe('warning');
+    expect(modelOverrides.has('oc_1')).toBe(false);
+  });
+});

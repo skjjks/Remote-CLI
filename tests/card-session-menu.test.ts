@@ -64,3 +64,95 @@ describe('buildSessionMenuCardV2', () => {
     expect(lastEl.columns).toHaveLength(3);
   });
 });
+
+// ── Handler integration tests (Task 7) ──
+
+import { vi, beforeEach, afterEach } from 'vitest';
+import { activeSessions } from '../src/state';
+import { handleCardAction } from '../src/handlers/card-action';
+import { getSessionManager } from '../src/terminal/session';
+
+vi.mock('../src/bot/feishu', () => ({
+  getFeishuBot: () => ({ updateCard: vi.fn(async () => {}) }),
+}));
+
+vi.mock('../src/terminal/tmux', () => ({
+  sessionExists: vi.fn(async () => true),
+}));
+
+import '../src/handlers/card-action';
+
+describe('sessionSwitch card action', () => {
+  beforeEach(() => {
+    activeSessions.clear();
+  });
+  afterEach(() => activeSessions.clear());
+
+  test('switch to existing in-conversation session sets activeSessions', async () => {
+    const sm = getSessionManager();
+    const newSession = sm.createClaudeSession('oc_1');
+
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'sessionSwitch',
+          choice: { type: 'existing', sessionId: newSession.id },
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_1' },
+    });
+
+    expect(result.toast?.type).toBe('success');
+    expect(activeSessions.get('oc_1')).toBe(newSession.id);
+  });
+
+  test('new-backend click creates session and sets it active', async () => {
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'sessionSwitch',
+          choice: { type: 'new', backend: 'claude' },
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_1' },
+    });
+    expect(result.toast?.type).toBe('success');
+    expect(activeSessions.get('oc_1')).toBeDefined();
+  });
+
+  test('existing session that vanished returns warning', async () => {
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'sessionSwitch',
+          choice: { type: 'existing', sessionId: 99999 },
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_1' },
+    });
+    expect(result.toast?.type).toBe('warning');
+    expect(activeSessions.has('oc_1')).toBe(false);
+  });
+
+  test('non-requester click is rejected', async () => {
+    const result = await handleCardAction({
+      action: {
+        value: {
+          kind: 'sessionSwitch',
+          choice: { type: 'new', backend: 'claude' },
+          requesterOpenId: 'ou_1',
+        },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_1' },
+      operator: { open_id: 'ou_STRANGER' },
+    });
+    expect(result.toast?.type).toBe('warning');
+    expect(activeSessions.has('oc_1')).toBe(false);
+  });
+});
