@@ -29,34 +29,45 @@ export async function handleNewSession(conversationId: string, backend?: string)
   await feishuBot.sendText(conversationId, `Created ${label} session ${session.id}`);
 }
 
-export async function handleListSessions(conversationId: string): Promise<void> {
+function relativeTime(createdIso: string): string {
+  const then = new Date(createdIso).getTime();
+  const diffMs = Math.max(0, Date.now() - then);
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
+async function sendSessionMenuCard(conversationId: string): Promise<void> {
   const feishuBot = getFeishuBot();
   const sessionManager = getSessionManager();
-  // Only show sessions belonging to this conversation
   const sessions = sessionManager.getSessions().filter(s => s.conversationId === conversationId);
-
-  if (sessions.length === 0) {
-    await feishuBot.sendText(conversationId, 'No active sessions');
-    return;
-  }
-
   const activeSessionId = activeSessions.get(conversationId);
-  const lines = sessions.map(s => {
-    const active = s.id === activeSessionId ? ' *' : '';
-    const sid = (s.type === 'claude' || s.type === 'opencode') && s.sdkSessionId
-      ? ` (${s.sdkSessionId})`
-      : '';
-    return `  ${s.id}: [${s.type}]${sid} created ${s.created}${active}`;
+  const requesterOpenId = lastRequester.get(conversationId) ?? '';
+  const card = smartCard.buildSessionMenuCardV2({
+    activeSessionId,
+    sessions: sessions.map(s => ({
+      id: s.id,
+      type: s.type,
+      createdDisplay: relativeTime(s.created),
+    })),
+    requesterOpenId,
   });
+  await feishuBot.sendCard(conversationId, card);
+}
 
-  await feishuBot.sendText(conversationId, `Sessions:\n${lines.join('\n')}`);
+export async function handleListSessions(conversationId: string): Promise<void> {
+  await sendSessionMenuCard(conversationId);
 }
 
 export async function handleSwitchSession(conversationId: string, idStr?: string): Promise<void> {
   const feishuBot = getFeishuBot();
 
   if (!idStr) {
-    await feishuBot.sendText(conversationId, 'Usage: !switch <session_id>');
+    await sendSessionMenuCard(conversationId);
     return;
   }
 
