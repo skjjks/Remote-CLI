@@ -957,5 +957,131 @@ export class SmartCardBuilder {
       body: { elements },
     };
   }
+
+  /**
+   * Schema 2.0 card with a form container wrapping a multiline input
+   * pre-filled with file content, plus 💾 Save / ✗ Cancel buttons. Save
+   * submits the form — Feishu delivers the edited content as
+   * event.action.form_value.content to the card.action.trigger handler.
+   *
+   * Caller is responsible for pre-flight checks (size ≤ 5000, not binary,
+   * file exists). This builder trusts its inputs.
+   */
+  buildEditFormCard(opts: {
+    path: string;
+    content: string;
+    requesterOpenId: string;
+  }): FeishuCardV2Schema20 {
+    const byteSize = Buffer.byteLength(opts.content, 'utf-8');
+    const rowCount = Math.min(20, Math.max(8, opts.content.split('\n').length));
+
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: `📝 ${opts.path} · ${byteSize} B` },
+        template: 'blue',
+      },
+      body: {
+        elements: [
+          {
+            tag: 'form',
+            name: 'edit_form',
+            elements: [
+              {
+                tag: 'input',
+                name: 'content',
+                input_type: 'multiline_text',
+                default_value: opts.content,
+                max_length: 5000,
+                rows: rowCount,
+                auto_resize: true,
+                width: 'fill',
+                placeholder: { tag: 'plain_text', content: 'file content' },
+              },
+              {
+                tag: 'column_set',
+                flex_mode: 'flow',
+                columns: [
+                  {
+                    tag: 'column',
+                    width: 'weighted',
+                    weight: 1,
+                    vertical_align: 'top',
+                    elements: [{
+                      tag: 'button',
+                      text: { tag: 'plain_text', content: '💾 Save' },
+                      type: 'primary',
+                      action_type: 'form_submit',
+                      name: 'btn_save',
+                      width: 'fill',
+                      value: {
+                        kind: 'editSave',
+                        path: opts.path,
+                        requesterOpenId: opts.requesterOpenId,
+                      },
+                    }],
+                  },
+                  {
+                    tag: 'column',
+                    width: 'weighted',
+                    weight: 1,
+                    vertical_align: 'top',
+                    elements: [{
+                      tag: 'button',
+                      text: { tag: 'plain_text', content: '✗ Cancel' },
+                      type: 'default',
+                      action_type: 'form_submit',
+                      name: 'btn_cancel',
+                      width: 'fill',
+                      value: {
+                        kind: 'editCancel',
+                        path: opts.path,
+                        requesterOpenId: opts.requesterOpenId,
+                      },
+                    }],
+                  },
+                ],
+              },
+            ],
+          },
+        ],
+      },
+    };
+  }
+
+  /** Read-only card shown after a successful save. Replaces the edit form in place via updateCard. */
+  buildEditSavedCard(opts: { path: string; byteSize: number }): FeishuCardV2Schema20 {
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: `✅ ${opts.path} saved` },
+        template: 'green',
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: `_${opts.byteSize} bytes written_` },
+        ],
+      },
+    };
+  }
+
+  /** Read-only card shown after cancel. File not modified. */
+  buildEditCancelledCard(opts: { path: string }): FeishuCardV2Schema20 {
+    return {
+      schema: '2.0',
+      config: { update_multi: true },
+      header: {
+        title: { tag: 'plain_text', content: `✗ ${opts.path} edit cancelled` },
+        template: 'grey',
+      },
+      body: {
+        elements: [
+          { tag: 'markdown', content: '_edit cancelled, no changes written_' },
+        ],
+      },
+    };
+  }
 }
 
