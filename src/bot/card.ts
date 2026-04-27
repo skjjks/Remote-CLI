@@ -46,10 +46,21 @@ type FeishuCardV2Button = {
   disabled?: boolean;
 };
 
+type FeishuCardV2FormSubmitButton = {
+  tag: 'button';
+  text: { tag: 'plain_text'; content: string };
+  type: 'primary' | 'danger' | 'default';
+  action_type: 'form_submit';
+  name: string;
+  value: CardActionValue;
+  width?: 'default' | 'fill';
+};
+
 type FeishuCardV2Schema20Element =
   | { tag: 'markdown'; content: string }
   | { tag: 'note'; elements: Array<{ tag: 'plain_text'; content: string }> }
   | FeishuCardV2Button
+  | FeishuCardV2FormSubmitButton
   | {
       // Schema 2.0 no longer supports `tag: 'action'`. Buttons live directly in
       // `elements`; use `column_set` to lay them out horizontally.
@@ -62,6 +73,29 @@ type FeishuCardV2Schema20Element =
         vertical_align?: 'top' | 'center' | 'bottom';
         elements: FeishuCardV2Schema20Element[];
       }>;
+    }
+  | {
+      // Feishu schema 2.0 form container. Requires `name`. Must contain at
+      // least one button with action_type='form_submit'. On submit, Feishu
+      // sends card.action.trigger with event.action.form_value as a dict
+      // keyed by each input's `name`.
+      tag: 'form';
+      name: string;
+      elements: FeishuCardV2Schema20Element[];
+    }
+  | {
+      // Multiline text input used inside a form container. `name` identifies
+      // this field in the submit payload. max_length is hard-capped at 5000
+      // by Feishu; exceeding crashes the card send.
+      tag: 'input';
+      name: string;
+      input_type: 'multiline_text' | 'text';
+      default_value?: string;
+      max_length?: number;
+      rows?: number;
+      auto_resize?: boolean;
+      width?: 'default' | 'fill';
+      placeholder?: { tag: 'plain_text'; content: string };
     };
 
 // ── Legacy V1 types (kept for backward compatibility) ──
