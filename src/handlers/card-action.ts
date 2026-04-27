@@ -1,3 +1,4 @@
+import * as fs from 'node:fs';
 import type {
   CardActionContext,
   CardActionHandler,
@@ -37,6 +38,7 @@ export async function handleCardAction(data: unknown): Promise<CardActionResult>
   const chatId = d?.context?.open_chat_id ?? d?.context?.chat_id;
   const messageId = d?.context?.open_message_id ?? d?.context?.message_id;
   const openId = d?.operator?.open_id ?? d?.operator?.user_id;
+  const formValue = (d?.action?.form_value ?? undefined) as Record<string, string> | undefined;
 
   if (!value || typeof value !== 'object' || typeof value.kind !== 'string') {
     console.warn('[CARD-ACTION] Invalid payload:', JSON.stringify(d).slice(0, 500));
@@ -47,6 +49,7 @@ export async function handleCardAction(data: unknown): Promise<CardActionResult>
     chatId: chatId ?? '',
     openId: openId ?? '',
     messageId: messageId ?? '',
+    formValue,
   };
 
   const handler = registry.get(value.kind);
@@ -242,4 +245,64 @@ registerCardActionHandler('sessionSwitch', async (value, ctx): Promise<CardActio
   return {
     toast: { type: statusColor === 'red' ? 'warning' : 'success', content: statusText } as const,
   };
+});
+
+registerCardActionHandler('editSave', async (value, ctx): Promise<CardActionResult> => {
+  if (value.kind !== 'editSave') {
+    return { toast: { type: 'error', content: 'Unknown action' } as const };
+  }
+  if (value.requesterOpenId && value.requesterOpenId !== ctx.openId) {
+    return { toast: { type: 'warning', content: 'Only the original editor can save' } as const };
+  }
+
+  const content = ctx.formValue?.content;
+  if (typeof content !== 'string') {
+    return { toast: { type: 'error', content: 'No content received' } as const };
+  }
+
+  // Atomic write: write to .tmp, then rename. Protects against partial writes.
+  const tmpPath = `${value.path}.tmp`;
+  try {
+    fs.writeFileSync(tmpPath, content, 'utf-8');
+    fs.renameSync(tmpPath, value.path);
+  } catch (err) {
+    return {
+      toast: {
+        type: 'error',
+        content: `Save failed: ${err instanceof Error ? err.message : String(err)}`,
+      } as const,
+    };
+  }
+
+  const byteSize = Buffer.byteLength(content, 'utf-8');
+  if (ctx.messageId) {
+    const resolvedCard = smartCard.buildEditSavedCard({ path: value.path, byteSize });
+    try {
+      await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
+    } catch {
+      // Card may have expired; save already succeeded.
+    }
+  }
+
+  return { toast: { type: 'success', content: 'Saved' } as const };
+});
+
+registerCardActionHandler('editCancel', async (value, ctx): Promise<CardActionResult> => {
+  if (value.kind !== 'editCancel') {
+    return { toast: { type: 'error', content: 'Unknown action' } as const };
+  }
+  if (value.requesterOpenId && value.requesterOpenId !== ctx.openId) {
+    return { toast: { type: 'warning', content: 'Only the original editor can cancel' } as const };
+  }
+
+  if (ctx.messageId) {
+    const resolvedCard = smartCard.buildEditCancelledCard({ path: value.path });
+    try {
+      await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
+    } catch {
+      // Card may have expired; no state change needed.
+    }
+  }
+
+  return { toast: { type: 'info', content: 'Cancelled' } as const };
 });

@@ -47,6 +47,8 @@ export interface CardActionContext {
   chatId: string;
   openId: string;
   messageId: string;
+  /** Form submit payload: key is each input's `name`, value is the user's submitted string. Undefined for non-form clicks. */
+  formValue?: Record<string, string>;
 }
 
 /** Shape returned by a handler — forwarded verbatim to Feishu. */
