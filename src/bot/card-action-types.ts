@@ -30,6 +30,16 @@ export type CardActionValue =
         | { type: 'existing'; sessionId: number }
         | { type: 'new'; backend: 'claude' | 'opencode' | 'terminal' };
       requesterOpenId: string;
+    }
+  | {
+      kind: 'editSave';
+      path: string;
+      requesterOpenId: string;
+    }
+  | {
+      kind: 'editCancel';
+      path: string;
+      requesterOpenId: string;
     };
 
 /** Fields extracted from the WebSocket `card.action.trigger` payload. */
