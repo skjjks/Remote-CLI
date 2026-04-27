@@ -184,6 +184,21 @@ registerCardActionHandler('modelSwitch', async (value, ctx): Promise<CardActionR
   };
 });
 
+/** Render a SessionInfo.created ISO string as "5m ago" / "2h ago" / "3d ago".
+ *  Duplicates the private helper in handlers/session.ts — kept local to stay
+ *  self-contained; promote to a util module if a third caller ever appears. */
+function formatRelativeAge(createdIso: string): string {
+  const then = new Date(createdIso).getTime();
+  const diffMs = Math.max(0, Date.now() - then);
+  const mins = Math.floor(diffMs / 60_000);
+  if (mins < 1) return 'just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  return `${days}d ago`;
+}
+
 registerCardActionHandler('sessionSwitch', async (value, ctx): Promise<CardActionResult> => {
   if (value.kind !== 'sessionSwitch') {
     return { toast: { type: 'error', content: 'Unknown action' } as const };
@@ -232,18 +247,25 @@ registerCardActionHandler('sessionSwitch', async (value, ctx): Promise<CardActio
     statusText = `✓ Created #${session.id} ${backend}`;
   }
 
-  if (ctx.messageId) {
-    const resolvedCard = smartCard.buildResolvedCardV2({
-      title: '💼 Sessions',
-      bodyMarkdown: '',
-      statusText,
-      statusColor,
-    });
-    await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
-  }
+  // Re-render the same Session menu card with the new activeSessionId so the
+  // "Active: #N" header updates and the newly-active button becomes disabled
+  // while the other sessions remain clickable. Returning the fresh menu as
+  // the card.action.trigger response body replaces the card in place — avoids
+  // the updateCard race and keeps the menu navigable for subsequent switches.
+  const refreshedSessions = sessionManager.getSessions().filter(s => s.conversationId === ctx.chatId);
+  const freshMenu = smartCard.buildSessionMenuCardV2({
+    activeSessionId: activeSessions.get(ctx.chatId),
+    sessions: refreshedSessions.map(s => ({
+      id: s.id,
+      type: s.type,
+      createdDisplay: formatRelativeAge(s.created),
+    })),
+    requesterOpenId: value.requesterOpenId,
+  });
 
   return {
     toast: { type: statusColor === 'red' ? 'warning' : 'success', content: statusText } as const,
+    card: { type: 'raw', data: freshMenu },
   };
 });
 
