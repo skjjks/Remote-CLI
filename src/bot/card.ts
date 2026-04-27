@@ -85,8 +85,9 @@ type FeishuCardV2Schema20Element =
     }
   | {
       // Multiline text input used inside a form container. `name` identifies
-      // this field in the submit payload. max_length is hard-capped at 5000
-      // by Feishu; exceeding crashes the card send.
+      // this field in the submit payload. max_length is hard-capped at 1000
+      // by Feishu (documented range 1-1000); exceeding crashes the card send
+      // with error 230099 / ErrCode 11310.
       tag: 'input';
       name: string;
       input_type: 'multiline_text' | 'text';
@@ -964,7 +965,7 @@ export class SmartCardBuilder {
    * submits the form — Feishu delivers the edited content as
    * event.action.form_value.content to the card.action.trigger handler.
    *
-   * Caller is responsible for pre-flight checks (size ≤ 5000, not binary,
+   * Caller is responsible for pre-flight checks (size ≤ 1000, not binary,
    * file exists). This builder trusts its inputs.
    */
   buildEditFormCard(opts: {
@@ -993,7 +994,7 @@ export class SmartCardBuilder {
                 name: 'content',
                 input_type: 'multiline_text',
                 default_value: opts.content,
-                max_length: 5000,
+                max_length: 1000,
                 rows: rowCount,
                 auto_resize: true,
                 width: 'fill',

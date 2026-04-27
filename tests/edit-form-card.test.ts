@@ -25,7 +25,7 @@ describe('buildEditFormCard', () => {
     expect(input.input_type).toBe('multiline_text');
     expect(input.name).toBe('content');
     expect(input.default_value).toBe('{\n  "port": 8080\n}');
-    expect(input.max_length).toBe(5000);
+    expect(input.max_length).toBe(1000);
   });
 
   test('save button value has kind=editSave and the path', () => {

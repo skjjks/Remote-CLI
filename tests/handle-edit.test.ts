@@ -52,9 +52,9 @@ describe('handleEdit', () => {
     expect(sendCard).not.toHaveBeenCalled();
   });
 
-  test('too-large file (> 5000 bytes) → sends size text', async () => {
+  test('too-large file (> 1000 bytes) → sends size text', async () => {
     const p = join(tmpDir, 'big.txt');
-    writeFileSync(p, 'x'.repeat(6000));
+    writeFileSync(p, 'x'.repeat(1200));
     await handleEdit('conv-1', p);
     expect(sendText).toHaveBeenCalledOnce();
     expect(sendText.mock.calls[0][1]).toMatch(/too large|vim/i);

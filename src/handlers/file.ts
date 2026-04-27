@@ -223,10 +223,10 @@ export async function handleEdit(conversationId: string, pathArg?: string): Prom
     return;
   }
 
-  if (stat.size > 5000) {
+  if (stat.size > 1000) {
     await feishuBot.sendText(
       conversationId,
-      `File too large (${stat.size} bytes, limit 5000).\nUse: !sh vim ${filePath}`,
+      `File too large (${stat.size} bytes, limit 1000).\nUse: !sh vim ${filePath}`,
     );
     return;
   }
