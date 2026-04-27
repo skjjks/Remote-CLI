@@ -6,7 +6,7 @@
 
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D18-339933?style=for-the-badge&logo=node.js&logoColor=white)](https://nodejs.org/)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.x-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://www.typescriptlang.org/)
-[![Tests](https://img.shields.io/badge/Tests-265%20passed-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](#)
+[![Tests](https://img.shields.io/badge/Tests-320%20passed-brightgreen?style=for-the-badge&logo=vitest&logoColor=white)](#)
 [![License](https://img.shields.io/badge/License-MIT-yellow?style=for-the-badge)](LICENSE)
 
 **在飞书里远程控制服务器、与 AI 编码助手对话、传输文件、一键连接工程云**
@@ -152,6 +152,7 @@ Bot：Packing directory...
 | 📥 下载文件 | `!dl <path>` 把服务器文件发到飞书 |
 | 📦 目录打包 | `!dl <目录>` 自动打包为 tar.gz 下载 |
 | 🖼️ 图片预览 | 图片文件以图片消息发送，飞书内直接预览 |
+| ✏️ 在线编辑 | `!edit <path>` 把文件加载进可编辑表单卡片，Save 原子写盘、Cancel 放弃（文件 ≤ 1000 字符，受飞书 `input` 组件硬上限） |
 | ⚠️ 冲突提醒 | 同名文件弹出卡片确认——点 Overwrite / Cancel 按钮，或输入数字 |
 
 <br/>
@@ -373,6 +374,7 @@ npm run deploy
 |:-----|:-----|
 | `!dl <path>` | 下载服务器文件到飞书 |
 | `!download <path>` | 同上（完整写法） |
+| `!edit <path>` | 在飞书卡片里编辑小文本文件（≤ 1000 字符） |
 | 直接发文件/图片 | 上传到服务器 `~/uploads/` |
 
 ### ☁️ 工程云
@@ -469,7 +471,8 @@ graph TB
 | 卡片构建 | `src/bot/card.ts` | 飞书卡片模板、ANSI 清理、语法高亮 |
 | 飞书客户端 | `src/bot/feishu.ts` | API 封装、WebSocket 消息收发 |
 | 会话持久化 | `src/terminal/session.ts` | 会话存储、重连、24h 自动清理 |
-| 文件传输 | `src/handlers/file.ts` | 双向文件传输、目录打包、冲突检测 |
+| 文件传输 | `src/handlers/file.ts` | 双向文件传输、目录打包、冲突检测、`!edit` 表单卡 |
+| 二进制检测 | `src/terminal/binary-detector.ts` | NUL + 控制字节启发式判断是否二进制 |
 | 工程云连接 | `src/clouddev/connector.ts` | SSH 状态机、自动化认证 |
 
 </details>
@@ -524,7 +527,7 @@ pm2 startup && pm2 save
 ## 🛠️ 开发
 
 ```bash
-npm test              # 运行测试 (265 tests)
+npm test              # 运行测试 (320 tests)
 npm run test:watch    # 监听模式
 npm run lint          # 代码检查
 npm run build         # 构建
@@ -564,6 +567,7 @@ src/
     ansi-parser.ts          # ANSI SGR 转义码解析
     fonts.ts                # 系统字体检测与逐字符路由
     screenshot.ts           # 终端截图渲染 (Canvas → PNG)
+    binary-detector.ts      # 二进制文件启发式判断（NUL + 控制字节）
 ```
 
 </details>
