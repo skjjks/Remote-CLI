@@ -42,7 +42,10 @@ describe('editSave card action', () => {
 
     expect(result.toast?.type).toBe('success');
     expect(readFileSync(p, 'utf-8')).toBe('new content');
-    expect(updateCard).toHaveBeenCalledOnce();
+    expect(result.card).toEqual({
+      type: 'raw',
+      data: expect.objectContaining({ schema: '2.0' }),
+    });
   });
 
   test('non-requester click is rejected with warning; file unchanged', async () => {
@@ -60,7 +63,7 @@ describe('editSave card action', () => {
 
     expect(result.toast?.type).toBe('warning');
     expect(readFileSync(p, 'utf-8')).toBe('old');
-    expect(updateCard).not.toHaveBeenCalled();
+    expect(result.card).toBeUndefined();
   });
 
   test('cancel does not write and returns info toast', async () => {
@@ -78,7 +81,10 @@ describe('editSave card action', () => {
 
     expect(result.toast?.type).toBe('info');
     expect(readFileSync(p, 'utf-8')).toBe('untouched');
-    expect(updateCard).toHaveBeenCalledOnce();
+    expect(result.card).toEqual({
+      type: 'raw',
+      data: expect.objectContaining({ schema: '2.0' }),
+    });
   });
 
   test('save clicked twice: second click is warning; file not rewritten', async () => {
@@ -108,10 +114,10 @@ describe('editSave card action', () => {
 
     expect(secondResult.toast?.type).toBe('warning');
     expect(readFileSync(p, 'utf-8')).toBe('tampered on disk by someone else');
-    expect(updateCard).toHaveBeenCalledOnce();
+    expect(secondResult.card).toBeUndefined();
   });
 
-  test('cancel clicked twice: second click is warning; updateCard not re-called', async () => {
+  test('cancel clicked twice: second click is warning; no replacement card returned', async () => {
     const p = join(tmpDir, 'f.txt');
     writeFileSync(p, 'x');
 
@@ -132,6 +138,6 @@ describe('editSave card action', () => {
     });
 
     expect(secondResult.toast?.type).toBe('warning');
-    expect(updateCard).toHaveBeenCalledOnce();
+    expect(secondResult.card).toBeUndefined();
   });
 });

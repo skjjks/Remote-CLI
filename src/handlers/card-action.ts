@@ -285,17 +285,17 @@ registerCardActionHandler('editSave', async (value, ctx): Promise<CardActionResu
 
   if (ctx.messageId) resolvedEditCards.add(ctx.messageId);
 
+  // Form submit response: return the replacement card INSIDE the response body.
+  // Feishu's form_submit protocol requires { card: { type: 'raw', data: <JSON> } }
+  // for in-place card replacement. Using updateCard here instead would race the
+  // form_submit response and not reliably hide the form UI on mobile clients.
   const byteSize = Buffer.byteLength(content, 'utf-8');
-  if (ctx.messageId) {
-    const resolvedCard = smartCard.buildEditSavedCard({ path: value.path, byteSize });
-    try {
-      await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
-    } catch {
-      // Card may have expired; save already succeeded.
-    }
-  }
+  const savedCard = smartCard.buildEditSavedCard({ path: value.path, byteSize });
 
-  return { toast: { type: 'success', content: 'Saved' } as const };
+  return {
+    toast: { type: 'success', content: 'Saved' } as const,
+    card: { type: 'raw', data: savedCard },
+  };
 });
 
 registerCardActionHandler('editCancel', async (value, ctx): Promise<CardActionResult> => {
@@ -317,14 +317,10 @@ registerCardActionHandler('editCancel', async (value, ctx): Promise<CardActionRe
 
   if (ctx.messageId) resolvedEditCards.add(ctx.messageId);
 
-  if (ctx.messageId) {
-    const resolvedCard = smartCard.buildEditCancelledCard({ path: value.path });
-    try {
-      await getFeishuBot().updateCard(ctx.messageId, resolvedCard);
-    } catch {
-      // Card may have expired; no state change needed.
-    }
-  }
+  const cancelledCard = smartCard.buildEditCancelledCard({ path: value.path });
 
-  return { toast: { type: 'info', content: 'Cancelled' } as const };
+  return {
+    toast: { type: 'info', content: 'Cancelled' } as const,
+    card: { type: 'raw', data: cancelledCard },
+  };
 });
