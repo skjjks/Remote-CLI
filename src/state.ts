@@ -88,6 +88,14 @@ export const modelOverrides: Map<string, string> = new Map();
  */
 export const lastRequester: Map<string, string> = new Map();
 
+/**
+ * Edit form card message_ids that have already been resolved (saved or cancelled).
+ * Protects against Feishu mobile clients that show a stale form after submit and
+ * let the user tap Save/Cancel again — the second tap finds the messageId here
+ * and short-circuits with a warning toast, preventing duplicate disk writes.
+ */
+export const resolvedEditCards: Set<string> = new Set();
+
 export const COMMAND_PREFIX = '!';
 
 export const smartCard = new SmartCardBuilder();

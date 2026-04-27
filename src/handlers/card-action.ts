@@ -5,7 +5,7 @@ import type {
   CardActionResult,
   CardActionValue,
 } from '../bot/card-action-types';
-import { pendingRequests, smartCard, modelOverrides, activeSessions } from '../state';
+import { pendingRequests, smartCard, modelOverrides, activeSessions, resolvedEditCards } from '../state';
 import { resolvePendingRequestById } from '../ai/shared';
 import { getFeishuBot } from '../bot/feishu';
 import { handleFileOverwriteResponse } from './file';
@@ -255,6 +255,15 @@ registerCardActionHandler('editSave', async (value, ctx): Promise<CardActionResu
     return { toast: { type: 'warning', content: 'Only the original editor can save' } as const };
   }
 
+  if (ctx.messageId && resolvedEditCards.has(ctx.messageId)) {
+    return {
+      toast: {
+        type: 'warning',
+        content: 'Already saved. Run !edit again to make more changes.',
+      } as const,
+    };
+  }
+
   const content = ctx.formValue?.content;
   if (typeof content !== 'string') {
     return { toast: { type: 'error', content: 'No content received' } as const };
@@ -273,6 +282,8 @@ registerCardActionHandler('editSave', async (value, ctx): Promise<CardActionResu
       } as const,
     };
   }
+
+  if (ctx.messageId) resolvedEditCards.add(ctx.messageId);
 
   const byteSize = Buffer.byteLength(content, 'utf-8');
   if (ctx.messageId) {
@@ -294,6 +305,17 @@ registerCardActionHandler('editCancel', async (value, ctx): Promise<CardActionRe
   if (value.requesterOpenId && value.requesterOpenId !== ctx.openId) {
     return { toast: { type: 'warning', content: 'Only the original editor can cancel' } as const };
   }
+
+  if (ctx.messageId && resolvedEditCards.has(ctx.messageId)) {
+    return {
+      toast: {
+        type: 'warning',
+        content: 'This edit is already closed. Run !edit again if needed.',
+      } as const,
+    };
+  }
+
+  if (ctx.messageId) resolvedEditCards.add(ctx.messageId);
 
   if (ctx.messageId) {
     const resolvedCard = smartCard.buildEditCancelledCard({ path: value.path });

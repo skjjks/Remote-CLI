@@ -2,6 +2,7 @@ import { describe, test, expect, vi, beforeEach, afterEach } from 'vitest';
 import { mkdtempSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
 import { join } from 'node:path';
 import { tmpdir } from 'node:os';
+import { resolvedEditCards } from '../src/state';
 
 const updateCard = vi.fn(async () => {});
 
@@ -18,10 +19,12 @@ describe('editSave card action', () => {
   beforeEach(() => {
     tmpDir = mkdtempSync(join(tmpdir(), 'edit-save-test-'));
     updateCard.mockClear();
+    resolvedEditCards.clear();
   });
 
   afterEach(() => {
     rmSync(tmpDir, { recursive: true, force: true });
+    resolvedEditCards.clear();
   });
 
   test('save writes form_value.content to disk and returns success toast', async () => {
@@ -75,6 +78,60 @@ describe('editSave card action', () => {
 
     expect(result.toast?.type).toBe('info');
     expect(readFileSync(p, 'utf-8')).toBe('untouched');
+    expect(updateCard).toHaveBeenCalledOnce();
+  });
+
+  test('save clicked twice: second click is warning; file not rewritten', async () => {
+    const p = join(tmpDir, 'f.txt');
+    writeFileSync(p, 'old');
+
+    await handleCardAction({
+      action: {
+        value: { kind: 'editSave', path: p, requesterOpenId: 'ou_1' },
+        form_value: { content: 'first save' },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_dup' },
+      operator: { open_id: 'ou_1' },
+    });
+    expect(readFileSync(p, 'utf-8')).toBe('first save');
+
+    writeFileSync(p, 'tampered on disk by someone else');
+
+    const secondResult = await handleCardAction({
+      action: {
+        value: { kind: 'editSave', path: p, requesterOpenId: 'ou_1' },
+        form_value: { content: 'second save SHOULD NOT OVERWRITE' },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_dup' },
+      operator: { open_id: 'ou_1' },
+    });
+
+    expect(secondResult.toast?.type).toBe('warning');
+    expect(readFileSync(p, 'utf-8')).toBe('tampered on disk by someone else');
+    expect(updateCard).toHaveBeenCalledOnce();
+  });
+
+  test('cancel clicked twice: second click is warning; updateCard not re-called', async () => {
+    const p = join(tmpDir, 'f.txt');
+    writeFileSync(p, 'x');
+
+    await handleCardAction({
+      action: {
+        value: { kind: 'editCancel', path: p, requesterOpenId: 'ou_1' },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_cancel' },
+      operator: { open_id: 'ou_1' },
+    });
+
+    const secondResult = await handleCardAction({
+      action: {
+        value: { kind: 'editCancel', path: p, requesterOpenId: 'ou_1' },
+      },
+      context: { open_chat_id: 'oc_1', open_message_id: 'om_cancel' },
+      operator: { open_id: 'ou_1' },
+    });
+
+    expect(secondResult.toast?.type).toBe('warning');
     expect(updateCard).toHaveBeenCalledOnce();
   });
 });
