@@ -106,6 +106,13 @@ describe('sessionSwitch card action', () => {
 
     expect(result.toast?.type).toBe('success');
     expect(activeSessions.get('oc_1')).toBe(newSession.id);
+    // Form_submit-style response: fresh menu card returned in response body
+    // with the new activeSessionId, so the Feishu client replaces the card
+    // in place instead of keeping the stale "Active: old-id" view.
+    const resultCard = result.card as { type: string; data: unknown } | undefined;
+    expect(resultCard?.type).toBe('raw');
+    const menuHeader = (resultCard?.data as any).body.elements[0];
+    expect(menuHeader.content).toContain(`#${newSession.id}`);
   });
 
   test('new-backend click creates session and sets it active', async () => {

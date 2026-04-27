@@ -30,6 +30,16 @@ export type CardActionValue =
         | { type: 'existing'; sessionId: number }
         | { type: 'new'; backend: 'claude' | 'opencode' | 'terminal' };
       requesterOpenId: string;
+    }
+  | {
+      kind: 'editSave';
+      path: string;
+      requesterOpenId: string;
+    }
+  | {
+      kind: 'editCancel';
+      path: string;
+      requesterOpenId: string;
     };
 
 /** Fields extracted from the WebSocket `card.action.trigger` payload. */
@@ -37,6 +47,8 @@ export interface CardActionContext {
   chatId: string;
   openId: string;
   messageId: string;
+  /** Form submit payload: key is each input's `name`, value is the user's submitted string. Undefined for non-form clicks. */
+  formValue?: Record<string, string>;
 }
 
 /** Shape returned by a handler — forwarded verbatim to Feishu. */

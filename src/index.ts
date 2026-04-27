@@ -8,7 +8,7 @@ import { activeSessions, pendingPrompts, pendingFileUploads, lastRequester, COMM
 import { handleShellCommand, handleSpecialKey, handleShortcutKey, handleRawMode, handleScreen, handleTerminalInput } from './handlers/terminal';
 import { handleClaudeCommand, handleOpencodeCommand, handleCd, getClaudeManager, getOpencodeManager } from './handlers/ai';
 import { handleCloudCommand, forwardToClouddev } from './handlers/clouddev';
-import { handleFileUpload, handleFileDownload, handleFileOverwriteResponse } from './handlers/file';
+import { handleFileUpload, handleFileDownload, handleFileOverwriteResponse, handleEdit } from './handlers/file';
 import type { AIManager } from './ai/manager';
 import { handleNewSession, handleListSessions, handleSwitchSession, handleKillSession, handleInterrupt, handleModeSwitch, handleHistory, handleModel } from './handlers/session';
 import { ensureClaudeEnv } from './ai/drivers/claude-sdk';
@@ -97,6 +97,9 @@ async function handleCommand(
       case 'dl':
       case 'download':
         await handleFileDownload(conversationId, args.join(' '));
+        return;
+      case 'edit':
+        await handleEdit(conversationId, args[0]);
         return;
       case 'whoami':
         await feishuBot.sendText(conversationId, `Your User ID: ${senderId}`);
