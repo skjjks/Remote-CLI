@@ -5,6 +5,7 @@ import os from 'os';
 import { getFeishuBot } from '../bot/feishu';
 import { getConfig } from '../config';
 import { pendingFileUploads, lastRequester, smartCard } from '../state';
+import { isBinaryFile } from '../terminal/binary-detector';
 
 function ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) {
@@ -191,4 +192,57 @@ export async function handleFileDownload(
       fs.unlinkSync(tmpTar);
     }
   }
+}
+
+export async function handleEdit(conversationId: string, pathArg?: string): Promise<void> {
+  const feishuBot = getFeishuBot();
+
+  if (!pathArg) {
+    await feishuBot.sendText(conversationId, 'Usage: !edit <file>');
+    return;
+  }
+
+  const filePath = pathArg;
+
+  if (!fs.existsSync(filePath)) {
+    await feishuBot.sendText(
+      conversationId,
+      `File not found: ${filePath}\nTry: !sh touch ${filePath}`,
+    );
+    return;
+  }
+
+  const stat = fs.statSync(filePath);
+  if (!stat.isFile()) {
+    await feishuBot.sendText(conversationId, `Not a regular file: ${filePath}`);
+    return;
+  }
+
+  if (isBinaryFile(filePath)) {
+    await feishuBot.sendText(conversationId, `Cannot edit binary file: ${filePath}`);
+    return;
+  }
+
+  if (stat.size > 5000) {
+    await feishuBot.sendText(
+      conversationId,
+      `File too large (${stat.size} bytes, limit 5000).\nUse: !sh vim ${filePath}`,
+    );
+    return;
+  }
+
+  let content: string;
+  try {
+    content = fs.readFileSync(filePath, 'utf-8');
+  } catch (err) {
+    await feishuBot.sendText(
+      conversationId,
+      `Cannot read file: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return;
+  }
+
+  const requesterOpenId = lastRequester.get(conversationId) ?? '';
+  const card = smartCard.buildEditFormCard({ path: filePath, content, requesterOpenId });
+  await feishuBot.sendCard(conversationId, card);
 }
