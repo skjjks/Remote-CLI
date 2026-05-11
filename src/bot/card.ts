@@ -471,10 +471,10 @@ export class SmartCardBuilder {
     const elements: FeishuCardElement[] = this.parseTablesFromText(text);
 
     // Backend name + session ID for title
-    const backendNames: Record<string, string> = { opencode: 'Opencode', clouddev: 'CloudDev' };
+    const backendNames: Record<string, string> = { opencode: 'Opencode' };
     const backendName = backendNames[footer?.backend || ''] || 'Claude';
     const sessionTag = footer?.sessionId ? ` [${footer.sessionId}]` : '';
-    const backendColors: Record<string, string> = { opencode: 'grey', clouddev: 'blue' };
+    const backendColors: Record<string, string> = { opencode: 'grey' };
     const color = backendColors[footer?.backend || ''] || 'orange';
 
     // Dynamic title based on status

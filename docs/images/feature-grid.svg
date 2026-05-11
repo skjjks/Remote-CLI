@@ -72,20 +72,20 @@
     <text x="200" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#4a9eff">24h 自动清理</text>
   </g>
 
-  <!-- Card 5: Cloud Dev -->
+  <!-- Card 5: In-card File Editor -->
   <g transform="translate(290, 150)" filter="url(#card-shadow)">
     <rect width="260" height="120" rx="16" fill="#1e1e2e" stroke="#ff6b6b" stroke-opacity="0.2" stroke-width="1"/>
     <rect width="260" height="4" rx="2" fill="#ff6b6b"/>
     <circle cx="36" cy="44" r="20" fill="#ff6b6b" fill-opacity="0.15"/>
-    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">☁️</text>
-    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">工程云连接</text>
-    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">一键 SSH · 自动堡垒机认证</text>
-    <rect x="12" y="74" width="80" height="22" rx="11" fill="#ff6b6b" fill-opacity="0.12"/>
-    <text x="52" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#ff6b6b">扫码登录</text>
-    <rect x="98" y="74" width="80" height="22" rx="11" fill="#f5a623" fill-opacity="0.12"/>
-    <text x="138" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#f5a623">自动密码</text>
-    <rect x="184" y="74" width="60" height="22" rx="11" fill="#52c41a" fill-opacity="0.12"/>
-    <text x="214" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">sync</text>
+    <text x="36" y="50" text-anchor="middle" font-family="system-ui, sans-serif" font-size="18">✏️</text>
+    <text x="68" y="40" font-family="system-ui, sans-serif" font-size="16" font-weight="700" fill="white">在线编辑</text>
+    <text x="68" y="58" font-family="system-ui, sans-serif" font-size="11" fill="#888">表单卡内改小文件 · 原子写盘</text>
+    <rect x="12" y="74" width="70" height="22" rx="11" fill="#ff6b6b" fill-opacity="0.12"/>
+    <text x="47" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#ff6b6b">!edit</text>
+    <rect x="88" y="74" width="70" height="22" rx="11" fill="#f5a623" fill-opacity="0.12"/>
+    <text x="123" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#f5a623">Save / Cancel</text>
+    <rect x="164" y="74" width="80" height="22" rx="11" fill="#52c41a" fill-opacity="0.12"/>
+    <text x="204" y="89" text-anchor="middle" font-family="system-ui, sans-serif" font-size="10" fill="#52c41a">二进制检测</text>
   </g>
 
   <!-- Card 6: Security -->

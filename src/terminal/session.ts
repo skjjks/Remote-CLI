@@ -12,7 +12,7 @@ function nowTimestamp(): string {
  */
 export interface SessionInfo {
   id: number;
-  type: 'claude' | 'opencode' | 'terminal' | 'clouddev';
+  type: 'claude' | 'opencode' | 'terminal';
   tmuxName?: string;
   created: string;
   conversationId?: string;
@@ -22,8 +22,6 @@ export interface SessionInfo {
   allowedTools?: string[];
   // Terminal interactive mode
   rawMode?: boolean; // undefined = auto-detect, true = forced raw
-  // CloudDev connection status
-  clouddevStatus?: 'connecting' | 'auth_waiting' | 'connected' | 'failed';
   lastActivity?: string; // ISO timestamp of last activity
 }
 
@@ -149,8 +147,8 @@ export class SessionManager {
     if (this.data.sessions.length > 0) {
       const firstSession = this.data.sessions[0];
 
-      // For terminal and clouddev sessions, verify they still exist in tmux
-      if ((firstSession.type === 'terminal' || firstSession.type === 'clouddev') && firstSession.tmuxName) {
+      // For terminal sessions, verify they still exist in tmux
+      if (firstSession.type === 'terminal' && firstSession.tmuxName) {
         const exists = await tmux.sessionExists(firstSession.tmuxName);
         if (exists) {
           return firstSession;
@@ -205,39 +203,6 @@ export class SessionManager {
   }
 
   /**
-   * Create a new clouddev session (uses tmux for SSH connection)
-   */
-  async createClouddevSession(conversationId?: string): Promise<SessionInfo> {
-    const id = this.data.nextId;
-    const tmuxName = this.getTmuxName(id);
-
-    const exists = await tmux.sessionExists(tmuxName);
-    if (!exists) {
-      await tmux.createSession(
-        tmuxName,
-        this.config.terminal.shell,
-        this.config.terminal.cols,
-        this.config.terminal.rows
-      );
-    }
-
-    const session: SessionInfo = {
-      id,
-      type: 'clouddev',
-      tmuxName,
-      created: nowTimestamp(),
-      conversationId,
-      clouddevStatus: 'connecting',
-    };
-
-    this.data.sessions.push(session);
-    this.data.nextId++;
-    this.saveSessions();
-
-    return session;
-  }
-
-  /**
    * Update the Claude session ID (from system/init event)
    */
   updateSdkSessionId(sessionId: number, sdkSessionId: string): void {
@@ -278,17 +243,6 @@ export class SessionManager {
     const session = this.getSession(sessionId);
     if (session && session.type === 'terminal') {
       session.rawMode = rawMode;
-      this.saveSessions();
-    }
-  }
-
-  /**
-   * Update the clouddev connection status
-   */
-  updateClouddevStatus(sessionId: number, status: 'connecting' | 'auth_waiting' | 'connected' | 'failed'): void {
-    const session = this.getSession(sessionId);
-    if (session && session.type === 'clouddev') {
-      session.clouddevStatus = status;
       this.saveSessions();
     }
   }
@@ -336,8 +290,8 @@ export class SessionManager {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    // Only kill tmux for terminal and clouddev sessions
-    if ((session.type === 'terminal' || session.type === 'clouddev') && session.tmuxName) {
+    // Only kill tmux for terminal sessions
+    if (session.type === 'terminal' && session.tmuxName) {
       try {
         await tmux.killSession(session.tmuxName);
       } catch (err) {
@@ -365,7 +319,7 @@ export class SessionManager {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    if ((session.type !== 'terminal' && session.type !== 'clouddev') || !session.tmuxName) {
+    if (session.type !== 'terminal' || !session.tmuxName) {
       throw new Error(`Session ${sessionId} is not a terminal session`);
     }
 
@@ -386,7 +340,7 @@ export class SessionManager {
       throw new Error(`Session ${sessionId} not found`);
     }
 
-    if ((session.type !== 'terminal' && session.type !== 'clouddev') || !session.tmuxName) {
+    if (session.type !== 'terminal' || !session.tmuxName) {
       throw new Error(`Session ${sessionId} is not a terminal session`);
     }
 
@@ -422,7 +376,7 @@ export class SessionManager {
    */
   async killAllSessions(): Promise<void> {
     for (const session of this.data.sessions) {
-      if ((session.type === 'terminal' || session.type === 'clouddev') && session.tmuxName) {
+      if (session.type === 'terminal' && session.tmuxName) {
         try {
           await tmux.killSession(session.tmuxName);
         } catch (err) {
