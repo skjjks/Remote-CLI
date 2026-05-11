@@ -49,12 +49,6 @@ export interface Config {
     claudeFirstPollDelay: number;
     claudeMenuPollDelay: number;
   };
-  clouddev: {
-    username: string;
-    imageType: string;
-    relayHost: string;
-    emailPassword: string;
-  };
   upload: {
     dir: string;
   };
@@ -132,12 +126,6 @@ export function loadConfig(): Config {
       claudePollInterval: getEnvVarInt('TIMING_CLAUDE_POLL_INTERVAL', 1000),
       claudeFirstPollDelay: getEnvVarInt('TIMING_CLAUDE_FIRST_POLL_DELAY', 1500),
       claudeMenuPollDelay: getEnvVarInt('TIMING_CLAUDE_MENU_POLL_DELAY', 1000),
-    },
-    clouddev: {
-      username: getEnvVar('CLOUDDEV_USERNAME', ''),
-      imageType: getEnvVar('CLOUDDEV_IMAGE_TYPE', 'android'),
-      relayHost: getEnvVar('CLOUDDEV_RELAY_HOST', 'relay.xiaomi.com'),
-      emailPassword: getEnvVar('CLOUDDEV_EMAIL_PASSWORD', ''),
     },
     upload: {
       dir: getEnvVar('UPLOAD_DIR', path.join(os.homedir(), 'uploads')),
